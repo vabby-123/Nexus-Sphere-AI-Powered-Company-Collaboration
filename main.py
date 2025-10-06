@@ -1202,7 +1202,7 @@ class AutoGenPartnershipSystem:
         self.department_analyses = {}  # Initialize this
         self.final_decision = None     # Initialize this
         self.conversation_history = []  # Initialize this
-        
+        self.use_fast_mode = True
         # Check for AutoGen availability
         try:
             from autogen_agentchat.agents import AssistantAgent
@@ -1265,7 +1265,7 @@ class AutoGenPartnershipSystem:
                 api_key=api_key,
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",  # Gemini OpenAI-compatible endpoint
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=4000
             )
             
             # CEO Agent - Final Decision Maker
@@ -1379,15 +1379,126 @@ class AutoGenPartnershipSystem:
             self.available = False
             self.agents_initialized = False
     
+
+    def analyze_partnership_singleshot(self, company1: CompanyProfile, 
+                                      company2: CompanyProfile, 
+                                      context: str = "") -> Dict[str, Any]:
+        """Fast single-shot analysis without multi-agent conversation"""
+        
+        if not GEMINI_AVAILABLE:
+            logger.warning("Gemini not available, using fallback")
+            return self.generate_fallback_analysis(company1, company2, context)
+        
+        prompt = f"""Analyze this business partnership from multiple executive perspectives:
+
+**Partnership Overview:**
+Company A: {company1.name}
+- Industry: {company1.industry}
+- Revenue: ${company1.revenue:,.0f}
+- Employees: {company1.employee_count:,}
+- Growth Rate: {company1.growth_rate:.1%}
+
+Company B: {company2.name}
+- Industry: {company2.industry}
+- Revenue: ${company2.revenue:,.0f}
+- Employees: {company2.employee_count:,}
+- Growth Rate: {company2.growth_rate:.1%}
+
+Context: {context if context else "Strategic partnership evaluation"}
+
+Provide analysis in this format:
+
+**STRATEGIC ANALYSIS:**
+[Market fit, synergies, competitive advantage - 2-3 sentences]
+
+**FINANCIAL ANALYSIS:**
+[ROI potential, revenue impact, costs - 2-3 sentences]
+
+**RISK ASSESSMENT:**
+[3 key risks with severity 1-10, mitigation strategies - 3-4 sentences]
+
+**OPERATIONAL FEASIBILITY:**
+[Integration challenges, timeline, resources - 2-3 sentences]
+
+**FINAL DECISION:** APPROVE or REJECT
+[Clear recommendation with reasoning - 2 sentences]"""
+
+        try:
+            api_key = os.getenv('GEMINI_API_KEY')
+            if not api_key:
+                logger.error("GEMINI_API_KEY not found")
+                return self.generate_fallback_analysis(company1, company2, context)
+            
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            response = model.generate_content(prompt)
+            
+            text = response.text
+            logger.info(f"Generated analysis: {len(text)} characters")
+            
+            # Parse sections
+            sections = {}
+            section_markers = [
+                'STRATEGIC ANALYSIS',
+                'FINANCIAL ANALYSIS', 
+                'RISK ASSESSMENT',
+                'OPERATIONAL FEASIBILITY',
+                'FINAL DECISION'
+            ]
+            
+            for i, marker in enumerate(section_markers):
+                if marker in text:
+                    start = text.index(marker) + len(marker)
+                    # Find next marker or end of text
+                    end = len(text)
+                    for next_marker in section_markers[i+1:]:
+                        if next_marker in text[start:]:
+                            end = text.index(next_marker, start)
+                            break
+                    
+                    content = text[start:end].strip()
+                    # Remove leading colon and asterisks
+                    content = content.lstrip(':*').strip()
+                    
+                    key = marker.lower().replace(' ', '_')
+                    sections[key] = content
+            
+            # Extract decision
+            final_decision = sections.get('final_decision', 'No decision provided')
+            
+            return {
+                "success": True,
+                "analysis_type": "Fast Single-Shot Analysis",
+                "department_analyses": sections,
+                "final_decision": final_decision,
+                "conversation_history": [{"role": "assistant", "content": text}],
+                "raw_response": text
+            }
+            
+        except Exception as e:
+            logger.error(f"Single-shot analysis failed: {e}")
+            return {
+                "error": str(e),
+                "fallback_analysis": self.generate_fallback_analysis(company1, company2, context)
+            }
+    
     async def analyze_partnership(self, company1: CompanyProfile, company2: CompanyProfile, 
                                  context: str = "") -> Dict[str, Any]:
-        """Run comprehensive multi-agent partnership analysis"""
+        """Main analysis method - routes to fast or comprehensive mode"""
         
+        # Use fast mode if enabled
+        if self.use_fast_mode:
+            logger.info("Using fast single-shot mode")
+            return self.analyze_partnership_singleshot(company1, company2, context)
+        
+        # Otherwise use existing multi-agent code
         if not self.available or not self.agents_initialized:
             return {
                 "error": "AutoGen system not available",
-                "fallback_analysis": self.generate_fallback_analysis(company1, company2, context)  # FIXED: Added context
+                "fallback_analysis": self.generate_fallback_analysis(company1, company2, context)
             }
+
+
         
         # Prepare detailed task for agents
         task = f"""
@@ -3385,70 +3496,75 @@ def show_partnership_wizard():
                     st.error(f"Error saving partnership: {str(e)}")
 
 def show_autogen_analysis():
-    """AutoGen multi-agent analysis with existing companies"""
-    st.title("🤖 AutoGen Multi-Agent Partnership Analysis")
+    """AutoGen multi-agent analysis with mode selection"""
+    st.title("🤖 AI Partnership Analysis")
     
-    if not st.session_state.autogen_system.available:
-        st.warning("""
-        AutoGen is not available. Please ensure:
-        1. Install dependencies: `pip install autogen-core autogen-agentchat autogen-ext[openai]`
-        2. Set OPENAI_API_KEY in your environment variables
-        """)
-        return
+    # Mode selector
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.info("Fast mode: Single AI analysis (~5 sec) | Comprehensive: Multi-agent debate (~60 sec)")
+    with col2:
+        mode = st.selectbox("Mode", ["Fast", "Comprehensive"], index=0)
+        st.session_state.autogen_system.use_fast_mode = (mode == "Fast")
     
     # Company selection
     col1, col2 = st.columns(2)
-    
     with col1:
         st.subheader("Company 1")
         company1_id = show_company_selector(key_prefix="autogen_c1")
-    
     with col2:
         st.subheader("Company 2")
         exclude = [company1_id] if company1_id else None
         company2_id = show_company_selector(key_prefix="autogen_c2", exclude_ids=exclude)
     
-    # Context input
-    context = st.text_area("Partnership Context (Optional)", 
-                          placeholder="Describe the partnership opportunity...")
+    context = st.text_area("Partnership Context", 
+                          placeholder="Describe the opportunity...",
+                          height=100)
     
-    if st.button("🚀 Start Multi-Agent Analysis", type="primary", 
-                disabled=not (company1_id and company2_id)):
-        
-        # Load company profiles
+    if st.button("🚀 Start Analysis", type="primary", disabled=not (company1_id and company2_id)):
         company1 = st.session_state.db.get_company_profile(company1_id)
         company2 = st.session_state.db.get_company_profile(company2_id)
         
-        with st.spinner("🤖 Agents analyzing partnership... This may take a minute."):
+        with st.spinner(f"Analyzing partnership... ({mode} mode)"):
             try:
-                # Run async analysis
-                result = asyncio.run(
-                    st.session_state.autogen_system.analyze_partnership(
+                if mode == "Fast":
+                    # Fast mode is synchronous
+                    result = st.session_state.autogen_system.analyze_partnership_singleshot(
                         company1, company2, context
                     )
-                )
+                else:
+                    # Comprehensive mode is async
+                    result = asyncio.run(
+                        st.session_state.autogen_system.analyze_partnership(
+                            company1, company2, context
+                        )
+                    )
                 
                 if "error" in result:
-                    st.error(f"Analysis error: {result['error']}")
+                    st.error(f"Error: {result['error']}")
                     if "fallback_analysis" in result:
-                        st.info("Showing fallback analysis:")
                         st.json(result['fallback_analysis'])
                 else:
-                    st.success("✅ Multi-Agent Analysis Complete!")
+                    st.success(f"✅ {result.get('analysis_type', 'Analysis')} Complete!")
                     
-                    # Display department analyses
-                    st.subheader("Department Analyses")
+                    # Display sections
+                    analyses = result.get('department_analyses', {})
+                    for section, content in analyses.items():
+                        with st.expander(f"{section.replace('_', ' ').title()}", 
+                                       expanded=(section == 'final_decision')):
+                            st.write(content)
                     
-                    for agent, analysis in st.session_state.autogen_system.department_analyses.items():
-                        with st.expander(f"{agent.replace('_', ' ')}"):
-                            st.write(analysis)
+                    # Highlight decision
+                    if result.get('final_decision'):
+                        st.markdown("---")
+                        st.subheader("🎯 Recommendation")
+                        decision = result['final_decision']
+                        if 'APPROVE' in decision.upper():
+                            st.success(decision)
+                        else:
+                            st.warning(decision)
                     
-                    # Display final decision
-                    if st.session_state.autogen_system.final_decision:
-                        st.subheader("🎯 CEO Final Decision")
-                        st.success(st.session_state.autogen_system.final_decision)
-                    
-                    # Save analysis
+                    # Save button
                     if st.button("💾 Save Analysis"):
                         conn = st.session_state.db.get_connection()
                         cursor = conn.cursor()
@@ -3456,14 +3572,14 @@ def show_autogen_analysis():
                             INSERT INTO partnerships 
                             (primary_company_id, partner_company_id, type, status, autogen_analysis)
                             VALUES (?, ?, ?, ?, ?)
-                        """, (company1_id, company2_id, "Strategic Partnership", "analyzed", 
-                             json.dumps(result)))
+                        """, (company1_id, company2_id, "AI Analysis", "analyzed", json.dumps(result)))
                         conn.commit()
                         conn.close()
-                        st.success("Analysis saved!")
-            
+                        st.success("Saved!")
+                        
             except Exception as e:
-                st.error(f"Error during analysis: {str(e)}")
+                st.error(f"Error: {str(e)}")
+                logger.exception("Analysis failed")
 
 def show_ai_predictions():
     """Enhanced AI predictions with existing companies"""
