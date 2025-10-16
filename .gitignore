@@ -3,4 +3,3 @@ venv/
 data/
 rag_system/__pycache__
 rag_system/.env
-
