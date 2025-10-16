@@ -249,22 +249,31 @@ def show_query_interface(rag: AdvancedRAGSystem):
         if 'error' in result:
             st.error(f"❌ Error: {result['error']}")
         else:
-            # Display answer
+# Display answer
             st.markdown("---")
             st.markdown("### 💡 Answer")
+            
+            # Format answer with proper HTML line breaks
+            formatted_answer = result['answer'].replace('\n', '<br>')
             
             st.markdown(f"""
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                         padding: 2rem; border-radius: 15px; color: white;
-                        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);">
-                    <div style="color: white !important;">
-        {result['answer']}
-    </div>
+                        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+                        line-height: 1.6;">
+                {formatted_answer}
             </div>
             """, unsafe_allow_html=True)
             
-            # Metrics
+            # Add copyable text container
             st.markdown("---")
+            with st.expander("📋 Copy Answer Text", expanded=False):
+                st.text_area(
+                    "Answer (copyable)",
+                    value=result['answer'],
+                    height=200,
+                    key="copyable_answer"
+                )
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
