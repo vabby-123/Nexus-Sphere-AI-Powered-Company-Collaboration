@@ -257,7 +257,9 @@ def show_query_interface(rag: AdvancedRAGSystem):
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                         padding: 2rem; border-radius: 15px; color: white;
                         box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);">
-                {result['answer']}
+                    <div style="color: white !important;">
+        {result['answer']}
+    </div>
             </div>
             """, unsafe_allow_html=True)
             
