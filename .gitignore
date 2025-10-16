@@ -6,8 +6,6 @@ rag_system/.env
 
 chroma_db/
 *.sqlite3
-*.db
-*.sqlite
 
 # Cache directories
 data/sec_filings/
