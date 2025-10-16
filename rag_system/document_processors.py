@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-
+import hashlib
 from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,
     TokenTextSplitter,
@@ -16,7 +16,15 @@ from langchain.text_splitter import (
 )
 from langchain.docstore.document import Document
 import numpy as np
-from .data_fetchers import DocumentMetadata
+try:
+    from .data_fetchers import DocumentMetadata
+except ImportError:
+    # Fallback if import fails
+    from dataclasses import dataclass
+    @dataclass
+    class DocumentMetadata:
+        doc_id: str
+        source_type: str
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

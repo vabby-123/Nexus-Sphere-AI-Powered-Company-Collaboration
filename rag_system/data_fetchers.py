@@ -83,7 +83,7 @@ class SECFilingsFetcher:
             cache_dir: Directory for caching downloaded filings
         """
         self.headers = {
-            'User-Agent': f'NexusSphere/1.0 ({email})',
+            'User-Agent': f'{email}',  # Simplified format
             'Accept-Encoding': 'gzip, deflate',
             'Host': 'www.sec.gov'
         }
@@ -93,19 +93,32 @@ class SECFilingsFetcher:
         # CIK cache
         self.cik_cache = {}
         self._load_cik_cache()
+        
+        logger.info(f"✅ SEC Fetcher initialized with email: {email}")
     
     def _load_cik_cache(self):
         """Load CIK cache from disk"""
         cache_file = self.cache_dir / 'cik_cache.json'
         if cache_file.exists():
-            with open(cache_file, 'r') as f:
-                self.cik_cache = json.load(f)
+            try:
+                with open(cache_file, 'r') as f:
+                    self.cik_cache = json.load(f)
+                logger.info(f"✅ Loaded {len(self.cik_cache)} CIK mappings from cache")
+            except Exception as e:
+                logger.warning(f"Could not load CIK cache: {e}")
+                self.cik_cache = {}
+        else:
+            self.cik_cache = {}
     
     def _save_cik_cache(self):
         """Save CIK cache to disk"""
         cache_file = self.cache_dir / 'cik_cache.json'
-        with open(cache_file, 'w') as f:
-            json.dump(self.cik_cache, f, indent=2)
+        try:
+            with open(cache_file, 'w') as f:
+                json.dump(self.cik_cache, f, indent=2)
+            logger.info(f"✅ Saved {len(self.cik_cache)} CIK mappings to cache")
+        except Exception as e:
+            logger.error(f"Could not save CIK cache: {e}")
     
     @sleep_and_retry
     @limits(calls=RATE_LIMIT, period=1)
@@ -161,15 +174,20 @@ class SECFilingsFetcher:
         
         all_filings = []
         
-        # FIXED: SEC wants CIK without leading zeros for this endpoint
+        # Use data.sec.gov endpoint
         cik_no_zeros = cik.lstrip('0')
-        url = f"https://data.sec.gov/submissions/CIK{cik_no_zeros}.json"
+        url = f"https://data.sec.gov/submissions/CIK{cik}.json"
         
         logger.info(f"Fetching from: {url}")
         
         try:
             time.sleep(0.12)  # Rate limiting
-            response = requests.get(url, headers=self.headers, timeout=15)
+            
+            # Update Host header for data.sec.gov
+            headers = self.headers.copy()
+            headers['Host'] = 'data.sec.gov'
+            
+            response = requests.get(url, headers=headers, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
@@ -240,13 +258,6 @@ class SECFilingsFetcher:
             traceback.print_exc()
         
         return all_filings
-    
-    def _get_document_url(self, filing_href: str) -> str:
-        """Extract primary document URL from filing page URL"""
-        # The filing_href points to the index page
-        # We need to extract the actual document
-        # This is a simplified version - in production, parse the index page
-        return filing_href.replace('-index.html', '.txt')
     
     async def download_filing(self, filing: Dict[str, Any], force_refresh: bool = False) -> Optional[Path]:
         """Download filing to cache"""
@@ -382,55 +393,6 @@ class SECFilingsFetcher:
         logger.info(f"Identified {len(sections)} sections in filing")
         
         return sections
-    
-    async def batch_download_companies(
-        self,
-        tickers: List[str],
-        filing_types: List[str] = ['10-K', '10-Q'],
-        count_per_type: int = 5,
-        progress_callback: Optional[callable] = None
-    ) -> Dict[str, List[Path]]:
-        """
-        Batch download filings for multiple companies
-        
-        Args:
-            tickers: List of ticker symbols
-            filing_types: Filing types to download
-            count_per_type: Number of each filing type
-            progress_callback: Callback function(ticker, progress)
-            
-        Returns:
-            Dictionary mapping ticker to list of downloaded file paths
-        """
-        results = {}
-        
-        for i, ticker in enumerate(tickers):
-            logger.info(f"Processing {ticker} ({i+1}/{len(tickers)})")
-            
-            # Fetch filings
-            filings = await self.fetch_company_filings(
-                ticker=ticker,
-                filing_types=filing_types,
-                count=count_per_type
-            )
-            
-            # Download each filing
-            downloaded_files = []
-            for filing in filings:
-                file_path = await self.download_filing(filing)
-                if file_path:
-                    downloaded_files.append(file_path)
-            
-            results[ticker] = downloaded_files
-            
-            # Progress callback
-            if progress_callback:
-                progress_callback(ticker, (i + 1) / len(tickers))
-            
-            logger.info(f"Downloaded {len(downloaded_files)} filings for {ticker}")
-        
-        return results
-
 
 class PDFBatchProcessor:
     """
@@ -754,13 +716,13 @@ class URLScraper:
             return {'url': url, 'status': 'error', 'error': str(e)}
     
     def _extract_metadata(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
-        """Extract metadata from HTML"""
+        """Extract metadata from HTML - ChromaDB compatible (no nested dicts)"""
         metadata = {'url': url}
         
         # Title
         title = soup.find('title')
         if title:
-            metadata['title'] = title.get_text(strip=True)
+            metadata['title'] = title.get_text(strip=True)[:500]
         
         # Meta tags
         meta_tags = {
@@ -773,19 +735,40 @@ class URLScraper:
         for key, names in meta_tags.items():
             for name in names:
                 meta = soup.find('meta', attrs={'name': name}) or \
-                       soup.find('meta', attrs={'property': name})
+                    soup.find('meta', attrs={'property': name})
                 if meta:
-                    metadata[key] = meta.get('content', '')
+                    content = meta.get('content', '')
+                    if content:
+                        metadata[key] = str(content)[:500]
                     break
         
-        # Structured data (JSON-LD)
+        # Extract JSON-LD structured data (flatten to simple fields only)
         json_ld = soup.find('script', type='application/ld+json')
         if json_ld:
             try:
                 structured_data = json.loads(json_ld.string)
-                metadata['structured_data'] = structured_data
-            except:
-                pass
+                
+                if isinstance(structured_data, dict):
+                    # Extract simple fields
+                    simple_fields = ['headline', 'description', 'datePublished', 'dateModified']
+                    for field in simple_fields:
+                        if field in structured_data and isinstance(structured_data[field], (str, int, float)):
+                            metadata[f'article_{field}'] = str(structured_data[field])[:500]
+                    
+                    # Extract author name from nested dict
+                    if 'author' in structured_data:
+                        author = structured_data['author']
+                        if isinstance(author, dict) and 'name' in author:
+                            metadata['article_author'] = str(author['name'])[:200]
+                    
+                    # Extract publisher name from nested dict
+                    if 'publisher' in structured_data:
+                        publisher = structured_data['publisher']
+                        if isinstance(publisher, dict) and 'name' in publisher:
+                            metadata['publisher'] = str(publisher['name'])[:200]
+            
+            except Exception as e:
+                logger.debug(f"Could not parse structured data: {e}")
         
         return metadata
     

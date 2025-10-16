@@ -818,7 +818,6 @@
 #             json.dump(all_points, f, indent=2)
         
 #         logger.info(f"Exported {len(all_points)} documents to {output_file}")
-
 """
 Main RAG orchestrator - integrates all components
 """
@@ -850,11 +849,9 @@ from .document_processors import (
     DocumentFilter
 )
 from .vector_store_free import ChromaVectorStore, create_vector_store, HybridSearchEngine
-from .retrieval_strategies import (
-    MultiQueryRetriever,
-    ContextualCompressionRetriever,
-    ReRankingRetriever
-)
+
+
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1266,7 +1263,7 @@ class AdvancedRAGSystem:
                     progress_callback(url, i / len(urls), f"Scraping {url}")
                 
                 # Scrape URL
-                scraped_data = await self.url_scraper.scrape_url(url)
+                scraped_data = await self.url_scraper.scrape_url(url, use_cache=False)
                 
                 if scraped_data['status'] != 'success':
                     stats['errors'].append({

@@ -1,7 +1,3 @@
-"""
-Production-grade vector store with ChromaDB (no Docker) - FIXED VERSION
-"""
-
 import os
 import asyncio
 from typing import List, Dict, Any, Optional, Tuple
@@ -42,7 +38,7 @@ class ChromaVectorStore:
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': True}
         )
-        logger.info("Embedding model")
+        logger.info("✅ Embedding model loaded successfully")  # FIXED: Complete message
         
         # Initialize ChromaDB client (NEW API)
         self.client = chromadb.PersistentClient(
@@ -55,8 +51,9 @@ class ChromaVectorStore:
             metadata={"hnsw:space": "cosine"}
         )
         
-        logger.info(f"Initialized ChromaDB at {self.persist_directory}")
-        logger.info(f" Current document count: {self.collection.count()}")
+        logger.info(f"✅ Initialized ChromaDB at {self.persist_directory}")
+        logger.info(f"📊 Current document count: {self.collection.count()}")
+
     
     async def add_documents_batch(
         self,
