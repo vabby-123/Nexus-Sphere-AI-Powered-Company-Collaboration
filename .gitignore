@@ -1,2 +1,6 @@
 venv/
 .env
+data/
+rag_system/__pycache__
+rag_system/.env
+

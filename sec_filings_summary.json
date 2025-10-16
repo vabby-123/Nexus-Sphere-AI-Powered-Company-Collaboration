@@ -1,0 +1,533 @@
+{
+  "AAPL": {
+    "company_info": {
+      "ticker": "AAPL",
+      "name": "Apple Inc."
+    },
+    "cik": "0000320193",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-08-01",
+        "reportDate": "2025-06-28",
+        "accessionNumber": "0000320193-25-000073",
+        "primaryDocument": "aapl-20250628.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000320193/000032019325000073/aapl-20250628.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-05-02",
+        "reportDate": "2025-03-29",
+        "accessionNumber": "0000320193-25-000057",
+        "primaryDocument": "aapl-20250329.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000320193/000032019325000057/aapl-20250329.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-01-31",
+        "reportDate": "2024-12-28",
+        "accessionNumber": "0000320193-25-000008",
+        "primaryDocument": "aapl-20241228.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000320193/000032019325000008/aapl-20241228.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2024-11-01",
+        "reportDate": "2024-09-28",
+        "accessionNumber": "0000320193-24-000123",
+        "primaryDocument": "aapl-20240928.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000320193/000032019324000123/aapl-20240928.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-08-02",
+        "reportDate": "2024-06-29",
+        "accessionNumber": "0000320193-24-000081",
+        "primaryDocument": "aapl-20240629.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000320193/000032019324000081/aapl-20240629.htm"
+      }
+    ]
+  },
+  "MSFT": {
+    "company_info": {
+      "ticker": "MSFT",
+      "name": "Microsoft Corporation"
+    },
+    "cik": "0000789019",
+    "filings": [
+      {
+        "formType": "10-K",
+        "filingDate": "2025-07-30",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0000950170-25-100235",
+        "primaryDocument": "msft-20250630.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000789019/000095017025100235/msft-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-04-30",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0000950170-25-061046",
+        "primaryDocument": "msft-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000789019/000095017025061046/msft-20250331.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-01-29",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0000950170-25-010491",
+        "primaryDocument": "msft-20241231.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000789019/000095017025010491/msft-20241231.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-10-30",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0000950170-24-118967",
+        "primaryDocument": "msft-20240930.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000789019/000095017024118967/msft-20240930.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2024-07-30",
+        "reportDate": "2024-06-30",
+        "accessionNumber": "0000950170-24-087843",
+        "primaryDocument": "msft-20240630.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000789019/000095017024087843/msft-20240630.htm"
+      }
+    ]
+  },
+  "GOOGL": {
+    "company_info": {
+      "ticker": "GOOGL",
+      "name": "Alphabet Inc."
+    },
+    "cik": "0001652044",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-07-24",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0001652044-25-000062",
+        "primaryDocument": "goog-20250630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001652044/000165204425000062/goog-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-04-25",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0001652044-25-000043",
+        "primaryDocument": "goog-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001652044/000165204425000043/goog-20250331.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2025-02-05",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0001652044-25-000014",
+        "primaryDocument": "goog-20241231.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001652044/000165204425000014/goog-20241231.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-10-30",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0001652044-24-000118",
+        "primaryDocument": "goog-20240930.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001652044/000165204424000118/goog-20240930.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-07-24",
+        "reportDate": "2024-06-30",
+        "accessionNumber": "0001652044-24-000079",
+        "primaryDocument": "goog-20240630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001652044/000165204424000079/goog-20240630.htm"
+      }
+    ]
+  },
+  "AMZN": {
+    "company_info": {
+      "ticker": "AMZN",
+      "name": "Amazon.com Inc."
+    },
+    "cik": "0001018724",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-08-01",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0001018724-25-000086",
+        "primaryDocument": "amzn-20250630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001018724/000101872425000086/amzn-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-05-02",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0001018724-25-000036",
+        "primaryDocument": "amzn-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001018724/000101872425000036/amzn-20250331.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2025-02-07",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0001018724-25-000004",
+        "primaryDocument": "amzn-20241231.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001018724/000101872425000004/amzn-20241231.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-11-01",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0001018724-24-000161",
+        "primaryDocument": "amzn-20240930.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001018724/000101872424000161/amzn-20240930.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-08-02",
+        "reportDate": "2024-06-30",
+        "accessionNumber": "0001018724-24-000130",
+        "primaryDocument": "amzn-20240630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001018724/000101872424000130/amzn-20240630.htm"
+      }
+    ]
+  },
+  "NVDA": {
+    "company_info": {
+      "ticker": "NVDA",
+      "name": "NVIDIA Corporation"
+    },
+    "cik": "0001045810",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-08-27",
+        "reportDate": "2025-07-27",
+        "accessionNumber": "0001045810-25-000209",
+        "primaryDocument": "nvda-20250727.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581025000209/nvda-20250727.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-05-28",
+        "reportDate": "2025-04-27",
+        "accessionNumber": "0001045810-25-000116",
+        "primaryDocument": "nvda-20250427.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581025000116/nvda-20250427.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2025-02-26",
+        "reportDate": "2025-01-26",
+        "accessionNumber": "0001045810-25-000023",
+        "primaryDocument": "nvda-20250126.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581025000023/nvda-20250126.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-11-20",
+        "reportDate": "2024-10-27",
+        "accessionNumber": "0001045810-24-000316",
+        "primaryDocument": "nvda-20241027.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581024000316/nvda-20241027.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-08-28",
+        "reportDate": "2024-07-28",
+        "accessionNumber": "0001045810-24-000264",
+        "primaryDocument": "nvda-20240728.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581024000264/nvda-20240728.htm"
+      }
+    ]
+  },
+  "META": {
+    "company_info": {
+      "ticker": "META",
+      "name": "Meta Platforms Inc."
+    },
+    "cik": "0001326801",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-07-31",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0001628280-25-036791",
+        "primaryDocument": "meta-20250630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001326801/000162828025036791/meta-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-05-01",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0001326801-25-000054",
+        "primaryDocument": "meta-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001326801/000132680125000054/meta-20250331.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2025-01-30",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0001326801-25-000017",
+        "primaryDocument": "meta-20241231.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001326801/000132680125000017/meta-20241231.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-10-31",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0001326801-24-000081",
+        "primaryDocument": "meta-20240930.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001326801/000132680124000081/meta-20240930.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-08-01",
+        "reportDate": "2024-06-30",
+        "accessionNumber": "0001326801-24-000069",
+        "primaryDocument": "meta-20240630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001326801/000132680124000069/meta-20240630.htm"
+      }
+    ]
+  },
+  "TSLA": {
+    "company_info": {
+      "ticker": "TSLA",
+      "name": "Tesla Inc."
+    },
+    "cik": "0001318605",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-07-24",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0001628280-25-035806",
+        "primaryDocument": "tsla-20250630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001318605/000162828025035806/tsla-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-04-23",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0001628280-25-018911",
+        "primaryDocument": "tsla-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001318605/000162828025018911/tsla-20250331.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2025-01-30",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0001628280-25-003063",
+        "primaryDocument": "tsla-20241231.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001318605/000162828025003063/tsla-20241231.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-10-24",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0001628280-24-043486",
+        "primaryDocument": "tsla-20240930.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001318605/000162828024043486/tsla-20240930.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-07-24",
+        "reportDate": "2024-06-30",
+        "accessionNumber": "0001628280-24-032662",
+        "primaryDocument": "tsla-20240630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001318605/000162828024032662/tsla-20240630.htm"
+      }
+    ]
+  },
+  "BRK.B": {
+    "company_info": {
+      "ticker": "BRK.B",
+      "name": "Berkshire Hathaway Inc."
+    },
+    "cik": "0001067983",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-08-04",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0000950170-25-101578",
+        "primaryDocument": "brka-20250630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001067983/000095017025101578/brka-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-05-05",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0000950170-25-063112",
+        "primaryDocument": "brka-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001067983/000095017025063112/brka-20250331.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2025-02-24",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0000950170-25-025210",
+        "primaryDocument": "brka-20241231.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001067983/000095017025025210/brka-20241231.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-11-04",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0000950170-24-120241",
+        "primaryDocument": "brka-20240930.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001067983/000095017024120241/brka-20240930.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-08-05",
+        "reportDate": "2024-06-30",
+        "accessionNumber": "0000950170-24-090305",
+        "primaryDocument": "brka-20240630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001067983/000095017024090305/brka-20240630.htm"
+      }
+    ]
+  },
+  "V": {
+    "company_info": {
+      "ticker": "V",
+      "name": "Visa Inc."
+    },
+    "cik": "0001403161",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-07-30",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0001403161-25-000052",
+        "primaryDocument": "v-20250630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001403161/000140316125000052/v-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-04-30",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0001403161-25-000037",
+        "primaryDocument": "v-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001403161/000140316125000037/v-20250331.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-01-31",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0001403161-25-000017",
+        "primaryDocument": "v-20241231.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001403161/000140316125000017/v-20241231.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2024-11-13",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0001403161-24-000058",
+        "primaryDocument": "v-20240930.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001403161/000140316124000058/v-20240930.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-07-24",
+        "reportDate": "2024-06-30",
+        "accessionNumber": "0001403161-24-000041",
+        "primaryDocument": "v-20240630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0001403161/000140316124000041/v-20240630.htm"
+      }
+    ]
+  },
+  "JPM": {
+    "company_info": {
+      "ticker": "JPM",
+      "name": "JPMorgan Chase & Co."
+    },
+    "cik": "0000019617",
+    "filings": [
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-08-05",
+        "reportDate": "2025-06-30",
+        "accessionNumber": "0000019617-25-000615",
+        "primaryDocument": "jpm-20250630.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000019617/000001961725000615/jpm-20250630.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2025-05-01",
+        "reportDate": "2025-03-31",
+        "accessionNumber": "0000019617-25-000421",
+        "primaryDocument": "jpm-20250331.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000019617/000001961725000421/jpm-20250331.htm"
+      },
+      {
+        "formType": "10-K",
+        "filingDate": "2025-02-14",
+        "reportDate": "2024-12-31",
+        "accessionNumber": "0000019617-25-000270",
+        "primaryDocument": "jpm-20241231.htm",
+        "primaryDocDescription": "10-K",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000019617/000001961725000270/jpm-20241231.htm"
+      },
+      {
+        "formType": "10-Q",
+        "filingDate": "2024-10-30",
+        "reportDate": "2024-09-30",
+        "accessionNumber": "0000019617-24-000611",
+        "primaryDocument": "jpm-20240930.htm",
+        "primaryDocDescription": "10-Q",
+        "documentUrl": "https://www.sec.gov/Archives/edgar/data/0000019617/000001961724000611/jpm-20240930.htm"
+      }
+    ]
+  }
+}

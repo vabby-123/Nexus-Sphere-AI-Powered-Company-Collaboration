@@ -1,5 +1,5 @@
 
-
+import time
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -21,6 +21,12 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from dotenv import load_dotenv
 import yfinance as yf
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 try:
     from autogen_agentchat.agents import AssistantAgent
@@ -40,24 +46,63 @@ except ImportError:
     GEMINI_AVAILABLE = False
     logging.warning("Google Generative AI not available. Install with: pip install google-generativeai")
 
-# Load environment
-load_dotenv()
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Try to import RAG system with detailed error handling
+# ============================================================================
+RAG_AVAILABLE = False
+RAG_ERROR = None
+
+try:
+    # Test if rag_system directory exists
+    from pathlib import Path
+    rag_path = Path(__file__).parent / 'rag_system'
+    
+    if not rag_path.exists():
+        raise ImportError(f"rag_system directory not found at {rag_path}")
+    
+    if not (rag_path / '__init__.py').exists():
+        raise ImportError(f"rag_system/__init__.py not found")
+    
+    # Try to import
+    from rag_system import show_advanced_rag_system
+    RAG_AVAILABLE = True
+    logger.info("✅ RAG system available")
+    
+except ImportError as e:
+    RAG_AVAILABLE = False
+    RAG_ERROR = str(e)
+    logger.warning(f"⚠️ RAG system not available: {e}")
+    logger.info("💡 Run: python test_rag_imports.py to diagnose")
+except Exception as e:
+    RAG_AVAILABLE = False
+    RAG_ERROR = str(e)
+    logger.error(f"❌ Unexpected error loading RAG: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
 
 # ============================================================================
 # ENHANCED COMPANY PROFILE MANAGEMENT
 # ============================================================================
 
+# ============================================================================
+# ENHANCED COMPANY PROFILE WITH TICKER SUPPORT
+# ============================================================================
+
 @dataclass
 class CompanyProfile:
-    """Enhanced company profile with all relevant data"""
+    """Enhanced company profile with ticker and auto-fetch capability"""
     id: Optional[int] = None
     name: str = ""
+    ticker_symbol: str = ""  # NEW: Stock ticker
+    exchange: str = ""  # NEW: Exchange (NYSE, NASDAQ, etc.)
     industry: str = ""
+    sector: str = ""  # NEW: Sector classification
     size: str = ""
     revenue: float = 0.0
     location: str = ""
+    country: str = ""  # NEW: Country code
     description: str = ""
     website: str = ""
     founded_year: int = 2020
@@ -66,6 +111,18 @@ class CompanyProfile:
     growth_rate: float = 0.0
     reputation_score: float = 0.75
     sustainability_score: float = 7.0
+    
+    # Financial metrics (auto-populated from API)
+    pe_ratio: float = 0.0
+    pb_ratio: float = 0.0
+    debt_to_equity: float = 0.0
+    roe: float = 0.0
+    profit_margin: float = 0.0
+    dividend_yield: float = 0.0
+    beta: float = 1.0
+    current_price: float = 0.0
+    price_change_1d: float = 0.0
+    volume: int = 0
     
     # Additional business details
     business_model: str = ""
@@ -94,12 +151,23 @@ class CompanyProfile:
     contact_email: str = ""
     phone: str = ""
     
+    # Metadata
+    data_source: str = "manual"  # NEW: manual, yfinance, api
+    last_updated: str = ""
+    is_public: bool = False  # NEW: Public vs private company
+    
     def to_dict(self):
         return asdict(self)
     
     @classmethod
     def from_dict(cls, data):
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+    
+# ============================================================================
+# PORTFOLIO MANAGEMENT SYSTEM
+# ============================================================================
+
+
 
 # ============================================================================
 # ENHANCED DATABASE MANAGEMENT
@@ -111,9 +179,19 @@ class UnifiedDatabase:
     def __init__(self, db_path='unified_partnership.db'):
         self.db_path = db_path
         self.init_database()
-    
+        self._setup_connection_params()
+
+    def _setup_connection_params(self):
+        """Setup SQLite connection parameters"""
+        conn = self.get_connection()
+        conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging
+        conn.execute("PRAGMA synchronous=NORMAL")  # Faster commits
+        conn.close()
     def get_connection(self):
-        return sqlite3.connect(self.db_path)
+        """Get database connection with proper settings"""
+        conn = sqlite3.connect(self.db_path, timeout=10.0, check_same_thread=False)
+        conn.execute("PRAGMA foreign_keys=ON")  # Enable foreign keys
+        return conn
     
     def init_database(self):
         """Initialize enhanced database tables"""
@@ -123,42 +201,64 @@ class UnifiedDatabase:
         # Enhanced companies table with all profile fields
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS companies (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                industry TEXT,
-                size TEXT,
-                revenue REAL,
-                location TEXT,
-                description TEXT,
-                website TEXT,
-                founded_year INTEGER,
-                employee_count INTEGER,
-                market_cap REAL,
-                growth_rate REAL,
-                reputation_score REAL DEFAULT 0.75,
-                sustainability_score REAL DEFAULT 7.0,
-                business_model TEXT,
-                key_products TEXT,
-                target_markets TEXT,
-                competitive_advantages TEXT,
-                financial_health TEXT DEFAULT 'Good',
-                innovation_level TEXT DEFAULT 'Medium',
-                partnership_history TEXT,
-                regulatory_compliance TEXT DEFAULT 'Compliant',
-                tech_stack TEXT,
-                digital_maturity TEXT DEFAULT 'Medium',
-                data_capabilities TEXT,
-                ai_adoption TEXT DEFAULT 'Basic',
-                environmental_initiatives TEXT,
-                social_programs TEXT,
-                governance_structure TEXT,
-                sustainability_goals TEXT,
-                primary_contact TEXT,
-                contact_email TEXT,
-                phone TEXT,
-                metadata TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            ticker_symbol TEXT UNIQUE,
+            exchange TEXT,
+            industry TEXT,
+            sector TEXT,
+            size TEXT,
+            revenue REAL,
+            location TEXT,
+            country TEXT,
+            description TEXT,
+            website TEXT,
+            founded_year INTEGER,
+            employee_count INTEGER,
+            market_cap REAL,
+            growth_rate REAL,
+            reputation_score REAL DEFAULT 0.75,
+            sustainability_score REAL DEFAULT 7.0,
+            
+            -- Financial metrics
+            pe_ratio REAL DEFAULT 0,
+            pb_ratio REAL DEFAULT 0,
+            debt_to_equity REAL DEFAULT 0,
+            roe REAL DEFAULT 0,
+            profit_margin REAL DEFAULT 0,
+            dividend_yield REAL DEFAULT 0,
+            beta REAL DEFAULT 1.0,
+            current_price REAL DEFAULT 0,
+            price_change_1d REAL DEFAULT 0,
+            volume INTEGER DEFAULT 0,
+            
+            business_model TEXT,
+            key_products TEXT,
+            target_markets TEXT,
+            competitive_advantages TEXT,
+            financial_health TEXT DEFAULT 'Good',
+            innovation_level TEXT DEFAULT 'Medium',
+            partnership_history TEXT,
+            regulatory_compliance TEXT DEFAULT 'Compliant',
+            tech_stack TEXT,
+            digital_maturity TEXT DEFAULT 'Medium',
+            data_capabilities TEXT,
+            ai_adoption TEXT DEFAULT 'Basic',
+            environmental_initiatives TEXT,
+            social_programs TEXT,
+            governance_structure TEXT,
+            sustainability_goals TEXT,
+            primary_contact TEXT,
+            contact_email TEXT,
+            phone TEXT,
+            
+            -- Metadata
+            data_source TEXT DEFAULT 'manual',
+            last_updated TEXT,
+            is_public INTEGER DEFAULT 0,
+            metadata TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -285,66 +385,1533 @@ class UnifiedDatabase:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        cursor.execute('''
+    CREATE TABLE IF NOT EXISTS portfolios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        owner TEXT,
+        created_date TEXT,
+        total_value REAL DEFAULT 0,
+        cash_balance REAL DEFAULT 0,
+        target_allocation TEXT,
+        risk_tolerance TEXT DEFAULT 'Moderate',
+        investment_horizon TEXT DEFAULT 'Long-term',
+        rebalancing_frequency TEXT DEFAULT 'Quarterly',
+        metadata TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+
+# Portfolio holdings table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS portfolio_holdings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                portfolio_id INTEGER,
+                company_id INTEGER,
+                ticker_symbol TEXT NOT NULL,
+                shares REAL NOT NULL,
+                average_cost REAL NOT NULL,
+                current_price REAL DEFAULT 0,
+                purchase_date TEXT,
+                target_weight REAL DEFAULT 0,
+                actual_weight REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (portfolio_id) REFERENCES portfolios(id),
+                FOREIGN KEY (company_id) REFERENCES companies(id)
+            )
+        ''')
+
+        # Portfolio transactions table (for history tracking)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS portfolio_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                portfolio_id INTEGER,
+                holding_id INTEGER,
+                transaction_type TEXT,
+                ticker_symbol TEXT,
+                shares REAL,
+                price REAL,
+                commission REAL DEFAULT 0,
+                transaction_date TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (portfolio_id) REFERENCES portfolios(id),
+                FOREIGN KEY (holding_id) REFERENCES portfolio_holdings(id)
+            )
+        ''')
         
         conn.commit()
         conn.close()
     
     def save_company_profile(self, profile: CompanyProfile) -> int:
-        """Save or update company profile"""
+        """Save or update company profile - TRANSACTION SAFE VERSION"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        profile_dict = profile.to_dict()
-        
-        if profile.id:
-            # Update existing
-            fields = [k for k in profile_dict.keys() if k != 'id']
-            set_clause = ', '.join([f"{field}=?" for field in fields])
-            values = [profile_dict[field] for field in fields]
-            values.append(profile.id)
+        try:
+            profile_dict = profile.to_dict()
+            profile_id = profile_dict.pop('id', None)
             
-            cursor.execute(f'''
-                UPDATE companies SET {set_clause}, updated_at=CURRENT_TIMESTAMP
-                WHERE id=?
-            ''', values)
-        else:
-            # Insert new
-            fields = [k for k in profile_dict.keys() if k != 'id']
-            placeholders = ','.join(['?' for _ in fields])
-            values = [profile_dict[field] for field in fields]
+            # Check for duplicate ticker (if provided)
+            if profile.ticker_symbol:
+                cursor.execute(
+                    "SELECT id FROM companies WHERE ticker_symbol=? AND (? IS NULL OR id != ?)", 
+                    (profile.ticker_symbol, profile_id, profile_id)
+                )
+                duplicate = cursor.fetchone()
+                if duplicate:
+                    logger.info(f"♻️ Company {profile.ticker_symbol} exists (ID: {duplicate[0]})")
+                    conn.close()
+                    return duplicate[0]
             
-            cursor.execute(f'''
-                INSERT INTO companies ({','.join(fields)})
-                VALUES ({placeholders})
-            ''', values)
-            profile.id = cursor.lastrowid
-        
-        conn.commit()
-        conn.close()
-        return profile.id
+            if profile_id:
+                # UPDATE
+                set_parts = []
+                values = []
+                
+                for field, value in profile_dict.items():
+                    set_parts.append(f"{field}=?")
+                    values.append(value)
+                
+                set_parts.append("updated_at=CURRENT_TIMESTAMP")
+                values.append(profile_id)
+                
+                sql = f"UPDATE companies SET {', '.join(set_parts)} WHERE id=?"
+                cursor.execute(sql, values)
+                result_id = profile_id
+                
+                logger.info(f"✅ Updated: {profile.name} (ID: {profile_id})")
+                
+            else:
+                # INSERT
+                fields = list(profile_dict.keys())
+                placeholders = ','.join(['?' for _ in fields])
+                values = [profile_dict[field] for field in fields]
+                
+                sql = f"INSERT INTO companies ({','.join(fields)}) VALUES ({placeholders})"
+                cursor.execute(sql, values)
+                result_id = cursor.lastrowid
+                
+                logger.info(f"✅ Inserted: {profile.name} (ID: {result_id})")
+            
+            # CRITICAL: Commit the transaction
+            conn.commit()
+            
+            # VERIFY the save
+            cursor.execute("SELECT name FROM companies WHERE id=?", (result_id,))
+            verification = cursor.fetchone()
+            
+            if verification:
+                logger.info(f"✓ Verified in DB: {verification[0]}")
+            else:
+                logger.error(f"✗ Verification failed for ID: {result_id}")
+                conn.rollback()
+                raise Exception("Save verification failed")
+            
+            return result_id
+            
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            
+            if 'UNIQUE constraint failed: companies.ticker_symbol' in str(e):
+                cursor.execute("SELECT id, name FROM companies WHERE ticker_symbol=?", (profile.ticker_symbol,))
+                existing = cursor.fetchone()
+                if existing:
+                    logger.info(f"♻️ Using existing: {existing[1]} (ID: {existing[0]})")
+                    conn.close()
+                    return existing[0]
+            
+            logger.error(f"❌ Integrity error: {e}")
+            raise
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"❌ Save failed for {profile.name}: {e}")
+            raise
+            
+        finally:
+            conn.close()
     
     def get_company_profile(self, company_id: int) -> Optional[CompanyProfile]:
         """Get company profile by ID"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM companies WHERE id=?", (company_id,))
-        row = cursor.fetchone()
         
-        if row:
-            columns = [desc[0] for desc in cursor.description]
-            data = dict(zip(columns, row))
+        try:
+            cursor.execute("SELECT * FROM companies WHERE id=?", (company_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                columns = [desc[0] for desc in cursor.description]
+                data = dict(zip(columns, row))
+                return CompanyProfile.from_dict(data)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get company {company_id}: {e}")
+            return None
+            
+        finally:
             conn.close()
-            return CompanyProfile.from_dict(data)
+    
+    def get_company_by_ticker(self, ticker: str) -> Optional[CompanyProfile]:
+        """Get company profile by ticker symbol"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
         
-        conn.close()
-        return None
+        try:
+            cursor.execute("SELECT * FROM companies WHERE ticker_symbol=?", (ticker,))
+            row = cursor.fetchone()
+            
+            if row:
+                columns = [desc[0] for desc in cursor.description]
+                data = dict(zip(columns, row))
+                return CompanyProfile.from_dict(data)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get company by ticker {ticker}: {e}")
+            return None
+            
+        finally:
+            conn.close()
     
     def get_all_companies(self) -> List[Dict]:
         """Get all companies as list of dictionaries"""
         conn = self.get_connection()
-        companies_df = pd.read_sql_query("SELECT * FROM companies", conn)
-        conn.close()
-        return companies_df.to_dict('records')
+        
+        try:
+            companies_df = pd.read_sql_query("SELECT * FROM companies ORDER BY created_at DESC", conn)
+            return companies_df.to_dict('records')
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get all companies: {e}")
+            return []
+            
+        finally:
+            conn.close()
+    
+    def delete_company(self, company_id: int) -> bool:
+        """Delete a company and its related data"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Check for partnerships
+            cursor.execute("""
+                SELECT COUNT(*) FROM partnerships 
+                WHERE primary_company_id=? OR partner_company_id=?
+            """, (company_id, company_id))
+            
+            partnership_count = cursor.fetchone()[0]
+            
+            if partnership_count > 0:
+                logger.warning(f"Cannot delete company {company_id}: {partnership_count} partnerships exist")
+                return False
+            
+            # Delete company
+            cursor.execute("DELETE FROM companies WHERE id=?", (company_id,))
+            conn.commit()
+            
+            logger.info(f"✅ Deleted company ID: {company_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to delete company {company_id}: {e}")
+            conn.rollback()
+            return False
+            
+        finally:
+            conn.close()
+    
+    def search_companies(self, query: str) -> List[Dict]:
+        """Search companies by name, ticker, or description"""
+        conn = self.get_connection()
+        
+        try:
+            sql = """
+                SELECT * FROM companies 
+                WHERE name LIKE ? 
+                   OR ticker_symbol LIKE ? 
+                   OR description LIKE ?
+                   OR industry LIKE ?
+                ORDER BY name
+            """
+            
+            search_term = f"%{query}%"
+            companies_df = pd.read_sql_query(
+                sql, 
+                conn, 
+                params=(search_term, search_term, search_term, search_term)
+            )
+            
+            return companies_df.to_dict('records')
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to search companies: {e}")
+            return []
+            
+        finally:
+            conn.close()
+class MarketDataFetcher:
+    """Fetch and process real-time market data"""
+    
+    def __init__(self):
+        self.cache = {}
+        self.cache_duration = 300  # 5 minutes
+    
+    def get_stock_data(self, ticker: str, period: str = "1y") -> Dict:
+        """Fetch stock data with caching"""
+        cache_key = f"{ticker}_{period}"
+        
+        if cache_key in self.cache:
+            cached_time, data = self.cache[cache_key]
+            if (datetime.now() - cached_time).seconds < self.cache_duration:
+                return data
+        
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period=period)
+            info = stock.info
+            
+            self.cache[cache_key] = (datetime.now(), {'hist': hist, 'info': info})
+            return {'hist': hist, 'info': info}
+        except Exception as e:
+            logger.error(f"Failed to fetch data for {ticker}: {e}")
+            return None
+    
+    def get_company_fundamentals(self, ticker: str) -> Dict:
+        """Get fundamental data"""
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            
+            return {
+                'market_cap': info.get('marketCap', 0),
+                'revenue': info.get('totalRevenue', 0),
+                'ebitda': info.get('ebitda', 0),
+                'pe_ratio': info.get('trailingPE', 0),
+                'pb_ratio': info.get('priceToBook', 0),
+                'debt_to_equity': info.get('debtToEquity', 0),
+                'roe': info.get('returnOnEquity', 0),
+                'profit_margin': info.get('profitMargins', 0),
+                'beta': info.get('beta', 1.0),
+                'current_price': info.get('currentPrice', 0)
+            }
+        except:
+            return {}
+
+class RiskEngine:
+    """Advanced risk analytics"""
+    
+    def calculate_var(self, returns: pd.Series, confidence: float = 0.95) -> float:
+        """Calculate Value at Risk"""
+        return np.percentile(returns, (1 - confidence) * 100)
+    
+    def calculate_cvar(self, returns: pd.Series, confidence: float = 0.95) -> float:
+        """Calculate Conditional Value at Risk"""
+        var = self.calculate_var(returns, confidence)
+        return returns[returns <= var].mean()
+    
+    def calculate_sharpe_ratio(self, returns: pd.Series, risk_free_rate: float = 0.02) -> float:
+        """Calculate Sharpe Ratio"""
+        excess_returns = returns.mean() - risk_free_rate / 252
+        return excess_returns / returns.std() * np.sqrt(252) if returns.std() > 0 else 0
+    
+    def calculate_sortino_ratio(self, returns: pd.Series, risk_free_rate: float = 0.02) -> float:
+        """Calculate Sortino Ratio"""
+        excess_returns = returns.mean() - risk_free_rate / 252
+        downside_returns = returns[returns < 0]
+        downside_std = downside_returns.std()
+        return excess_returns / downside_std * np.sqrt(252) if downside_std > 0 else 0
+    
+    def calculate_max_drawdown(self, prices: pd.Series) -> float:
+        """Calculate Maximum Drawdown"""
+        cumulative = (1 + prices.pct_change()).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = (cumulative - running_max) / running_max
+        return drawdown.min()
+
+class PortfolioOptimizer:
+    """Mean-variance optimization"""
+    
+    def __init__(self):
+        self.risk_engine = RiskEngine()
+    
+    def optimize_sharpe(self, returns_df: pd.DataFrame) -> Dict:
+        """Optimize for maximum Sharpe ratio"""
+        from scipy.optimize import minimize
+        
+        mean_returns = returns_df.mean() * 252
+        cov_matrix = returns_df.cov() * 252
+        num_assets = len(returns_df.columns)
+        
+        def neg_sharpe(weights):
+            portfolio_return = np.dot(weights, mean_returns)
+            portfolio_std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+            return -portfolio_return / portfolio_std if portfolio_std > 0 else 0
+        
+        constraints = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+        bounds = tuple((0, 1) for _ in range(num_assets))
+        initial_guess = num_assets * [1. / num_assets]
+        
+        result = minimize(neg_sharpe, initial_guess, method='SLSQP',
+                         bounds=bounds, constraints=constraints)
+        
+        optimal_weights = result.x
+        optimal_return = np.dot(optimal_weights, mean_returns)
+        optimal_std = np.sqrt(np.dot(optimal_weights.T, np.dot(cov_matrix, optimal_weights)))
+        
+        return {
+            'weights': dict(zip(returns_df.columns, optimal_weights)),
+            'expected_return': optimal_return,
+            'volatility': optimal_std,
+            'sharpe_ratio': optimal_return / optimal_std if optimal_std > 0 else 0
+        }
+
+@dataclass
+class Portfolio:
+    """Portfolio entity"""
+    id: Optional[int] = None
+    name: str = ""
+    description: str = ""
+    owner: str = ""
+    created_date: str = ""
+    total_value: float = 0.0
+    cash_balance: float = 0.0
+    target_allocation: Dict[str, float] = field(default_factory=dict)
+    risk_tolerance: str = "Moderate"  # Conservative, Moderate, Aggressive
+    investment_horizon: str = "Long-term"  # Short, Medium, Long-term
+    rebalancing_frequency: str = "Quarterly"
+    metadata: Dict = field(default_factory=dict)
+    
+    def to_dict(self):
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+@dataclass
+class PortfolioHolding:
+    """Individual holding in a portfolio"""
+    id: Optional[int] = None
+    portfolio_id: int = 0
+    company_id: int = 0
+    ticker_symbol: str = ""
+    shares: float = 0.0
+    average_cost: float = 0.0
+    current_price: float = 0.0
+    purchase_date: str = ""
+    target_weight: float = 0.0
+    actual_weight: float = 0.0
+    
+    def market_value(self) -> float:
+        return self.shares * self.current_price
+    
+    def gain_loss(self) -> float:
+        return (self.current_price - self.average_cost) * self.shares
+    
+    def gain_loss_percent(self) -> float:
+        if self.average_cost > 0:
+            return ((self.current_price - self.average_cost) / self.average_cost) * 100
+        return 0.0
+
+class PortfolioManager:
+    """Complete portfolio management system"""
+    
+    def __init__(self, db: UnifiedDatabase):
+        self.db = db
+        self.market_data = MarketDataFetcher()
+        self.risk_engine = RiskEngine()
+        self.optimizer = PortfolioOptimizer()
+    
+    def create_portfolio(self, portfolio: Portfolio) -> int:
+        """Create new portfolio"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO portfolios (name, description, owner, created_date, 
+                                       total_value, cash_balance, target_allocation,
+                                       risk_tolerance, investment_horizon, 
+                                       rebalancing_frequency, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                portfolio.name,
+                portfolio.description,
+                portfolio.owner,
+                portfolio.created_date or datetime.now().isoformat(),
+                portfolio.total_value,
+                portfolio.cash_balance,
+                json.dumps(portfolio.target_allocation),
+                portfolio.risk_tolerance,
+                portfolio.investment_horizon,
+                portfolio.rebalancing_frequency,
+                json.dumps(portfolio.metadata)
+            ))
+            
+            portfolio_id = cursor.lastrowid
+            conn.commit()
+            logger.info(f"✅ Created portfolio: {portfolio.name} (ID: {portfolio_id})")
+            return portfolio_id
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to create portfolio: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def add_holding(self, holding: PortfolioHolding) -> int:
+        """Add holding to portfolio"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO portfolio_holdings (portfolio_id, company_id, ticker_symbol,
+                                               shares, average_cost, current_price,
+                                               purchase_date, target_weight)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                holding.portfolio_id,
+                holding.company_id,
+                holding.ticker_symbol,
+                holding.shares,
+                holding.average_cost,
+                holding.current_price,
+                holding.purchase_date or datetime.now().isoformat(),
+                holding.target_weight
+            ))
+            
+            holding_id = cursor.lastrowid
+            conn.commit()
+            
+            # Update portfolio total value
+            self._update_portfolio_value(holding.portfolio_id)
+            
+            logger.info(f"✅ Added holding: {holding.ticker_symbol} to portfolio {holding.portfolio_id}")
+            return holding_id
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to add holding: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def get_portfolio_holdings(self, portfolio_id: int) -> List[PortfolioHolding]:
+        """Get all holdings in a portfolio - FIXED VERSION"""
+        conn = self.db.get_connection()
+        
+        try:
+            # Query with explicit column selection
+            query = """
+                SELECT 
+                    h.id,
+                    h.portfolio_id,
+                    h.company_id,
+                    h.ticker_symbol,
+                    h.shares,
+                    h.average_cost,
+                    h.current_price,
+                    h.purchase_date,
+                    h.target_weight,
+                    h.actual_weight,
+                    c.name as company_name,
+                    c.sector as company_sector
+                FROM portfolio_holdings h
+                LEFT JOIN companies c ON h.company_id = c.id
+                WHERE h.portfolio_id = ?
+                ORDER BY h.created_at DESC
+            """
+            
+            cursor = conn.cursor()
+            cursor.execute(query, (portfolio_id,))
+            rows = cursor.fetchall()
+            
+            logger.info(f"📊 Retrieved {len(rows)} holdings for portfolio {portfolio_id}")
+            
+            holdings = []
+            for row in rows:
+                holding = PortfolioHolding(
+                    id=row[0],
+                    portfolio_id=row[1],
+                    company_id=row[2],
+                    ticker_symbol=row[3],
+                    shares=float(row[4]) if row[4] else 0.0,
+                    average_cost=float(row[5]) if row[5] else 0.0,
+                    current_price=float(row[6]) if row[6] else 0.0,
+                    purchase_date=row[7],
+                    target_weight=float(row[8]) if row[8] else 0.0,
+                    actual_weight=float(row[9]) if row[9] else 0.0
+                )
+                holdings.append(holding)
+            
+            return holdings
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get holdings for portfolio {portfolio_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return []
+            
+        finally:
+            conn.close()
+    
+    def update_prices(self, portfolio_id: int):
+        """Update current prices for all holdings"""
+        holdings = self.get_portfolio_holdings(portfolio_id)
+        
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            for holding in holdings:
+                # Fetch current price
+                data = self.market_data.get_stock_data(holding.ticker_symbol, period='1d')
+                if data and 'hist' in data:
+                    current_price = data['hist']['Close'].iloc[-1]
+                    
+                    # Update in database
+                    cursor.execute("""
+                        UPDATE portfolio_holdings 
+                        SET current_price = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (current_price, holding.id))
+            
+            conn.commit()
+            
+            # Update portfolio total value
+            self._update_portfolio_value(portfolio_id)
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to update prices: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def _update_portfolio_value(self, portfolio_id: int):
+        """Recalculate total portfolio value"""
+        holdings = self.get_portfolio_holdings(portfolio_id)
+        total_value = sum(h.market_value() for h in holdings)
+        
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get cash balance
+            cursor.execute("SELECT cash_balance FROM portfolios WHERE id = ?", (portfolio_id,))
+            cash_balance = cursor.fetchone()[0] or 0
+            
+            total_value += cash_balance
+            
+            cursor.execute("""
+                UPDATE portfolios 
+                SET total_value = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (total_value, portfolio_id))
+            
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def calculate_performance(self, portfolio_id: int) -> Dict:
+        """Calculate portfolio performance metrics"""
+        holdings = self.get_portfolio_holdings(portfolio_id)
+        
+        if not holdings:
+            return {}
+        
+        total_value = sum(h.market_value() for h in holdings)
+        total_cost = sum(h.average_cost * h.shares for h in holdings)
+        total_gain_loss = sum(h.gain_loss() for h in holdings)
+        
+        # Calculate weights
+        for holding in holdings:
+            holding.actual_weight = (holding.market_value() / total_value * 100) if total_value > 0 else 0
+        
+        # Get historical data for returns calculation
+        returns_data = []
+        for holding in holdings[:10]:  # Limit to top 10 for performance
+            data = self.market_data.get_stock_data(holding.ticker_symbol, period='1mo')
+            if data and 'hist' in data:
+                returns = data['hist']['Close'].pct_change().dropna()
+                returns_data.append(returns * holding.actual_weight / 100)
+        
+        if returns_data:
+            portfolio_returns = pd.concat(returns_data, axis=1).sum(axis=1)
+            volatility = portfolio_returns.std() * np.sqrt(252)
+            sharpe = self.risk_engine.calculate_sharpe_ratio(portfolio_returns)
+        else:
+            volatility = 0
+            sharpe = 0
+        
+        return {
+            'total_value': total_value,
+            'total_cost': total_cost,
+            'total_gain_loss': total_gain_loss,
+            'total_return_pct': (total_gain_loss / total_cost * 100) if total_cost > 0 else 0,
+            'volatility': volatility,
+            'sharpe_ratio': sharpe,
+            'holdings': holdings
+        }
+    
+    def generate_rebalancing_plan(self, portfolio_id: int) -> Dict:
+        """Generate rebalancing recommendations"""
+        holdings = self.get_portfolio_holdings(portfolio_id)
+        
+        if not holdings:
+            return {'needs_rebalancing': False, 'actions': []}
+        
+        # Calculate current vs target weights
+        total_value = sum(h.market_value() for h in holdings)
+        
+        rebalancing_actions = []
+        needs_rebalancing = False
+        
+        for holding in holdings:
+            current_weight = (holding.market_value() / total_value * 100) if total_value > 0 else 0
+            drift = current_weight - holding.target_weight
+            
+            if abs(drift) > 5:  # 5% threshold
+                needs_rebalancing = True
+                
+                if drift > 0:
+                    action = "SELL"
+                    amount = (drift / 100) * total_value
+                else:
+                    action = "BUY"
+                    amount = abs(drift / 100) * total_value
+                
+                rebalancing_actions.append({
+                    'ticker': holding.ticker_symbol,
+                    'action': action,
+                    'current_weight': current_weight,
+                    'target_weight': holding.target_weight,
+                    'drift': drift,
+                    'amount': amount,
+                    'shares': amount / holding.current_price if holding.current_price > 0 else 0
+                })
+        
+        return {
+            'needs_rebalancing': needs_rebalancing,
+            'actions': sorted(rebalancing_actions, key=lambda x: abs(x['drift']), reverse=True),
+            'total_value': total_value
+        }
+
+class PortfolioAnalytics:
+    """Advanced portfolio analytics"""
+    
+    @staticmethod
+    def calculate_sector_allocation(holdings: List[PortfolioHolding], companies: List[Dict]) -> Dict:
+        """Calculate allocation by sector"""
+        sector_allocation = {}
+        total_value = sum(h.market_value() for h in holdings)
+        
+        company_map = {c['ticker_symbol']: c for c in companies if c.get('ticker_symbol')}
+        
+        for holding in holdings:
+            company = company_map.get(holding.ticker_symbol)
+            if company:
+                sector = company.get('sector', 'Unknown')
+                value = holding.market_value()
+                
+                if sector in sector_allocation:
+                    sector_allocation[sector] += value
+                else:
+                    sector_allocation[sector] = value
+        
+        # Convert to percentages
+        return {
+            sector: (value / total_value * 100) if total_value > 0 else 0
+            for sector, value in sector_allocation.items()
+        }
+    
+    @staticmethod
+    def calculate_diversification_score(holdings: List[PortfolioHolding]) -> float:
+        """Calculate portfolio diversification score (0-100)"""
+        if not holdings:
+            return 0
+        
+        # Calculate Herfindahl index
+        total_value = sum(h.market_value() for h in holdings)
+        weights = [h.market_value() / total_value for h in holdings if total_value > 0]
+        
+        herfindahl = sum(w**2 for w in weights)
+        
+        # Convert to diversification score (inverse of concentration)
+        diversification = (1 - herfindahl) * 100
+        
+        return diversification
+    
+    @staticmethod
+    def identify_top_contributors(holdings: List[PortfolioHolding], limit: int = 5) -> List[Dict]:
+        """Identify top portfolio contributors by returns"""
+        contributors = []
+        
+        for holding in holdings:
+            gain_loss_pct = holding.gain_loss_percent()
+            contribution = gain_loss_pct * (holding.market_value() / sum(h.market_value() for h in holdings))
+            
+            contributors.append({
+                'ticker': holding.ticker_symbol,
+                'return_pct': gain_loss_pct,
+                'contribution': contribution,
+                'gain_loss': holding.gain_loss()
+            })
+        
+        return sorted(contributors, key=lambda x: x['contribution'], reverse=True)[:limit]
+    
+def analyze_partnership_investment_potential(partnership_id: int) -> Dict:
+    """Analyze a partnership as an investment opportunity"""
+    
+    # Get partnership details
+    conn = st.session_state.db.get_connection()
+    partnership = pd.read_sql_query(
+        "SELECT * FROM partnerships WHERE id=?", 
+        conn, 
+        params=(partnership_id,)
+    ).iloc[0]
+    
+    company1 = st.session_state.db.get_company_profile(partnership['primary_company_id'])
+    company2 = st.session_state.db.get_company_profile(partnership['partner_company_id'])
+    
+    # Calculate investment metrics
+    estimated_value = partnership['estimated_value']
+    success_prob = partnership.get('success_probability', 0.5)
+    roi_forecast = partnership.get('roi_forecast', 1.5)
+    
+    expected_value = estimated_value * success_prob * roi_forecast
+    
+    return {
+        'partnership_name': f"{company1.name} × {company2.name}",
+        'estimated_value': estimated_value,
+        'expected_value': expected_value,
+        'success_probability': success_prob,
+        'roi_forecast': roi_forecast,
+        'risk_adjusted_return': expected_value - estimated_value,
+        'investment_grade': _calculate_investment_grade(success_prob, roi_forecast)
+    }
+
+def _calculate_investment_grade(success_prob: float, roi: float) -> str:
+    """Calculate investment grade"""
+    score = success_prob * roi
+    
+    if score > 1.5:
+        return "A+ (Excellent)"
+    elif score > 1.2:
+        return "A (Very Good)"
+    elif score > 1.0:
+        return "B+ (Good)"
+    elif score > 0.8:
+        return "B (Fair)"
+    else:
+        return "C (Speculative)"    
+
+
+
+
+# ============================================================================
+# ADVANCED FINANCIAL ANALYTICS ENGINE
+# ============================================================================
+
+class FinancialAnalyticsAI:
+    """AI-powered financial analytics using Gemini"""
+    
+    def __init__(self):
+        self.gemini_api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+        if self.gemini_api_key:
+            try:
+                import google.generativeai as genai
+                from langchain_google_genai import GoogleGenerativeAI
+                from langchain.chains import LLMChain
+                from langchain.prompts import PromptTemplate
+                from langchain.memory import ConversationBufferMemory
+                
+                genai.configure(api_key=self.gemini_api_key)
+                self.llm = GoogleGenerativeAI(model="gemini-2.0-flash-exp", google_api_key=self.gemini_api_key)
+                self.memory = ConversationBufferMemory()
+                self.setup_chains()
+                self.available = True
+                logger.info("✅ Financial Analytics AI initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize Financial AI: {e}")
+                self.available = False
+        else:
+            logger.warning("Gemini API key not found - Financial AI disabled")
+            self.available = False
+    
+    def setup_chains(self):
+        """Setup LangChain analysis chains"""
+        
+        # Portfolio Analysis Chain
+        portfolio_template = """
+        You are an expert quantitative analyst. Analyze this portfolio and market data:
+        
+        {input}
+        
+        Provide analysis on:
+        1. Risk Assessment (1-10 scale with explanation)
+        2. Diversification Quality (score and recommendations)
+        3. Momentum Analysis (trends and signals)
+        4. Top 3 Opportunities (specific actionable recommendations)
+        5. Top 3 Risks (with mitigation strategies)
+        
+        Keep response concise, quantitative, and actionable.
+        """
+        
+        portfolio_prompt = PromptTemplate(
+            input_variables=["input"],
+            template=portfolio_template
+        )
+        
+        self.portfolio_chain = LLMChain(
+            llm=self.llm,
+            prompt=portfolio_prompt,
+            memory=self.memory
+        )
+        
+        # Market Intelligence Chain
+        intelligence_template = """
+        As a senior market strategist, analyze these market patterns:
+        
+        {input}
+        
+        Provide strategic insights on:
+        1. Market Regime Analysis (current phase and duration estimate)
+        2. Sector Rotation Signals (specific sectors to overweight/underweight)
+        3. Geographic Allocation Recommendations (regional tilts with conviction levels)
+        4. Risk-Adjusted Return Forecast (12-month outlook with scenarios)
+        
+        Format as bullet points with specific numbers and percentages.
+        """
+        
+        intelligence_prompt = PromptTemplate(
+            input_variables=["input"],
+            template=intelligence_template
+        )
+        
+        self.intelligence_chain = LLMChain(
+            llm=self.llm,
+            prompt=intelligence_prompt
+        )
+        
+        # Risk Assessment Chain
+        risk_template = """
+        You are a risk management specialist. Analyze this portfolio for risks:
+        
+        {input}
+        
+        Provide detailed risk assessment:
+        1. Concentration Risk (by position, sector, geography)
+        2. Tail Risk Exposure (worst-case scenarios)
+        3. Correlation Risk (hidden dependencies)
+        4. Liquidity Risk (exit strategy concerns)
+        5. Specific Risk Mitigation Actions
+        
+        Rate overall portfolio risk 1-10 and provide actionable hedging strategies.
+        """
+        
+        risk_prompt = PromptTemplate(
+            input_variables=["input"],
+            template=risk_template
+        )
+        
+        self.risk_chain = LLMChain(
+            llm=self.llm,
+            prompt=risk_prompt
+        )
+    
+    def analyze_portfolio(self, portfolio_id: int, holdings: List[PortfolioHolding], 
+                         companies: List[Dict], analysis_type: str = "comprehensive") -> Dict:
+        """Generate AI-powered portfolio analysis"""
+        
+        if not self.available:
+            return {'error': 'Financial AI not available', 'message': 'Please configure GEMINI_API_KEY'}
+        
+        try:
+            # Calculate portfolio metrics
+            total_value = sum(h.market_value() for h in holdings)
+            total_cost = sum(h.average_cost * h.shares for h in holdings)
+            total_gain_loss = sum(h.gain_loss() for h in holdings)
+            
+            # Build company map
+            company_map = {c.get('ticker_symbol', ''): c for c in companies}
+            
+            # Sector allocation
+            sector_allocation = {}
+            for holding in holdings:
+                company = company_map.get(holding.ticker_symbol, {})
+                sector = company.get('sector', 'Unknown')
+                value = holding.market_value()
+                sector_allocation[sector] = sector_allocation.get(sector, 0) + value
+            
+            # Build comprehensive analysis input
+            analysis_input = f"""
+            === PORTFOLIO ANALYSIS REQUEST ===
+            Analysis Type: {analysis_type}
+            
+            PORTFOLIO OVERVIEW:
+            - Total Holdings: {len(holdings)}
+            - Total Market Value: ${total_value:,.2f}
+            - Total Cost Basis: ${total_cost:,.2f}
+            - Total Gain/Loss: ${total_gain_loss:,.2f} ({(total_gain_loss/total_cost*100) if total_cost > 0 else 0:.2f}%)
+            
+            TOP HOLDINGS:
+            {self._format_top_holdings(holdings, 5)}
+            
+            SECTOR ALLOCATION:
+            {self._format_sector_allocation(sector_allocation, total_value)}
+            
+            POSITION DETAILS:
+            {self._format_position_details(holdings, company_map)}
+            
+            PERFORMANCE METRICS:
+            - Best Performer: {self._get_best_performer(holdings)}
+            - Worst Performer: {self._get_worst_performer(holdings)}
+            - Avg Position Size: ${(total_value/len(holdings)):,.2f}
+            - Largest Position: {self._get_largest_position(holdings, total_value)}
+            
+            Provide actionable insights and specific recommendations.
+            """
+            
+            # Generate analysis based on type
+            if analysis_type == "risk":
+                response = self.risk_chain.run(input=analysis_input)
+            elif analysis_type == "market_intelligence":
+                response = self.intelligence_chain.run(input=analysis_input)
+            else:
+                response = self.portfolio_chain.run(input=analysis_input)
+            
+            return {
+                'success': True,
+                'analysis': response,
+                'metrics': {
+                    'total_value': total_value,
+                    'total_gain_loss': total_gain_loss,
+                    'return_pct': (total_gain_loss/total_cost*100) if total_cost > 0 else 0,
+                    'holdings_count': len(holdings),
+                    'sector_allocation': sector_allocation
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Portfolio analysis failed: {e}")
+            return {'error': str(e), 'success': False}
+    
+    def _format_top_holdings(self, holdings: List[PortfolioHolding], limit: int) -> str:
+        """Format top holdings by value"""
+        sorted_holdings = sorted(holdings, key=lambda h: h.market_value(), reverse=True)
+        lines = []
+        for i, h in enumerate(sorted_holdings[:limit], 1):
+            lines.append(f"{i}. {h.ticker_symbol}: ${h.market_value():,.2f} "
+                        f"({h.gain_loss_percent():+.2f}%) - {h.shares:.2f} shares @ ${h.current_price:.2f}")
+        return '\n'.join(lines)
+    
+    def _format_sector_allocation(self, sector_allocation: Dict, total_value: float) -> str:
+        """Format sector allocation percentages"""
+        lines = []
+        for sector, value in sorted(sector_allocation.items(), key=lambda x: x[1], reverse=True):
+            pct = (value / total_value * 100) if total_value > 0 else 0
+            lines.append(f"- {sector}: ${value:,.2f} ({pct:.1f}%)")
+        return '\n'.join(lines)
+    
+    def _format_position_details(self, holdings: List[PortfolioHolding], company_map: Dict) -> str:
+        """Format detailed position information"""
+        lines = []
+        for h in holdings[:10]:  # Limit to 10 for brevity
+            company = company_map.get(h.ticker_symbol, {})
+            industry = company.get('industry', 'N/A')
+            lines.append(f"- {h.ticker_symbol} ({industry}): {h.shares:.2f} shares, "
+                        f"Return: {h.gain_loss_percent():+.2f}%")
+        return '\n'.join(lines)
+    
+    def _get_best_performer(self, holdings: List[PortfolioHolding]) -> str:
+        """Get best performing holding"""
+        if not holdings:
+            return "N/A"
+        best = max(holdings, key=lambda h: h.gain_loss_percent())
+        return f"{best.ticker_symbol} (+{best.gain_loss_percent():.2f}%)"
+    
+    def _get_worst_performer(self, holdings: List[PortfolioHolding]) -> str:
+        """Get worst performing holding"""
+        if not holdings:
+            return "N/A"
+        worst = min(holdings, key=lambda h: h.gain_loss_percent())
+        return f"{worst.ticker_symbol} ({worst.gain_loss_percent():.2f}%)"
+    
+    def _get_largest_position(self, holdings: List[PortfolioHolding], total_value: float) -> str:
+        """Get largest position by value"""
+        if not holdings:
+            return "N/A"
+        largest = max(holdings, key=lambda h: h.market_value())
+        pct = (largest.market_value() / total_value * 100) if total_value > 0 else 0
+        return f"{largest.ticker_symbol} (${largest.market_value():,.2f}, {pct:.1f}%)"
+
+class MarketSentimentAnalyzer:
+    """Real-time market sentiment analysis"""
+    
+    def __init__(self):
+        self.market_data = MarketDataFetcher()
+    
+    def calculate_market_sentiment(self, tickers: List[str]) -> Dict:
+        """Calculate market sentiment indicators"""
+        
+        sentiment_scores = {
+            'momentum': 0,
+            'volatility': 0,
+            'risk_appetite': 0,
+            'liquidity': 0
+        }
+        
+        try:
+            # Fetch market data for sentiment analysis
+            valid_data_count = 0
+            
+            for ticker in tickers[:10]:  # Limit to 10 for performance
+                data = self.market_data.get_stock_data(ticker, period='1mo')
+                
+                if data and 'hist' in data:
+                    hist = data['hist']
+                    
+                    # Calculate momentum (based on returns)
+                    returns = hist['Close'].pct_change()
+                    momentum = returns.mean() * 252 * 100  # Annualized
+                    
+                    # Calculate volatility
+                    volatility = returns.std() * np.sqrt(252) * 100
+                    
+                    # Momentum score (0-100)
+                    sentiment_scores['momentum'] += min(max((momentum + 20) * 2.5, 0), 100)
+                    
+                    # Volatility score (inverse - lower vol is better)
+                    sentiment_scores['volatility'] += min(max(100 - volatility * 2, 0), 100)
+                    
+                    # Risk appetite (based on price trend)
+                    trend = (hist['Close'][-1] / hist['Close'][0] - 1) * 100
+                    sentiment_scores['risk_appetite'] += min(max((trend + 10) * 5, 0), 100)
+                    
+                    # Liquidity (based on volume)
+                    avg_volume = hist['Volume'].mean()
+                    recent_volume = hist['Volume'][-5:].mean()
+                    liquidity_ratio = recent_volume / avg_volume if avg_volume > 0 else 1
+                    sentiment_scores['liquidity'] += min(max(liquidity_ratio * 50, 0), 100)
+                    
+                    valid_data_count += 1
+            
+            # Average the scores
+            if valid_data_count > 0:
+                for key in sentiment_scores:
+                    sentiment_scores[key] = sentiment_scores[key] / valid_data_count
+            
+            # Determine status for each indicator
+            sentiment_data = {
+                'Momentum': {
+                    'score': sentiment_scores['momentum'],
+                    'status': self._get_status(sentiment_scores['momentum'])
+                },
+                'Volatility': {
+                    'score': sentiment_scores['volatility'],
+                    'status': self._get_status(sentiment_scores['volatility'])
+                },
+                'Risk Appetite': {
+                    'score': sentiment_scores['risk_appetite'],
+                    'status': self._get_status(sentiment_scores['risk_appetite'])
+                },
+                'Liquidity': {
+                    'score': sentiment_scores['liquidity'],
+                    'status': self._get_status(sentiment_scores['liquidity'])
+                }
+            }
+            
+            return sentiment_data
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate market sentiment: {e}")
+            # Return default values
+            return {
+                'Momentum': {'score': 50, 'status': '🟡 Neutral'},
+                'Volatility': {'score': 50, 'status': '🟡 Moderate'},
+                'Risk Appetite': {'score': 50, 'status': '🟡 Neutral'},
+                'Liquidity': {'score': 50, 'status': '🟡 Moderate'}
+            }
+    
+    def _get_status(self, score: float) -> str:
+        """Convert score to status with emoji"""
+        if score >= 70:
+            return "🟢 Strong"
+        elif score >= 50:
+            return "🟡 Moderate"
+        else:
+            return "🔴 Weak"
+
+class TrendAnalyzer:
+    """Advanced trend analysis for portfolios"""
+    
+    def __init__(self):
+        self.market_data = MarketDataFetcher()
+    
+    def analyze_trends(self, holdings: List[PortfolioHolding], timeframe: str = "1mo") -> Dict:
+        """Analyze trends across portfolio holdings"""
+        
+        trends = {
+            'uptrend': [],
+            'downtrend': [],
+            'sideways': [],
+            'signals': []
+        }
+        
+        try:
+            for holding in holdings:
+                data = self.market_data.get_stock_data(holding.ticker_symbol, period=timeframe)
+                
+                if data and 'hist' in data:
+                    hist = data['hist']
+                    
+                    # Calculate moving averages
+                    ma_short = hist['Close'].rolling(window=5).mean()
+                    ma_long = hist['Close'].rolling(window=20).mean()
+                    
+                    # Determine trend
+                    if len(ma_short) > 0 and len(ma_long) > 0:
+                        current_price = hist['Close'][-1]
+                        short_ma = ma_short[-1]
+                        long_ma = ma_long[-1]
+                        
+                        if short_ma > long_ma and current_price > short_ma:
+                            trends['uptrend'].append(holding.ticker_symbol)
+                            trends['signals'].append({
+                                'ticker': holding.ticker_symbol,
+                                'signal': 'BUY',
+                                'strength': 'Strong',
+                                'price': current_price
+                            })
+                        elif short_ma < long_ma and current_price < short_ma:
+                            trends['downtrend'].append(holding.ticker_symbol)
+                            trends['signals'].append({
+                                'ticker': holding.ticker_symbol,
+                                'signal': 'SELL',
+                                'strength': 'Weak',
+                                'price': current_price
+                            })
+                        else:
+                            trends['sideways'].append(holding.ticker_symbol)
+            
+            return trends
+            
+        except Exception as e:
+            logger.error(f"Trend analysis failed: {e}")
+            return trends
+
+class OpportunityScanner:
+    """Scan for investment opportunities"""
+    
+    def __init__(self):
+        self.market_data = MarketDataFetcher()
+    
+    def scan_opportunities(self, portfolio_holdings: List[PortfolioHolding], 
+                          all_companies: List[Dict]) -> Dict:
+        """Scan for opportunities based on portfolio and market conditions"""
+        
+        opportunities = {
+            'momentum_plays': [],
+            'value_opportunities': [],
+            'diversification_needs': [],
+            'rebalancing_actions': []
+        }
+        
+        try:
+            # Get current portfolio sectors
+            portfolio_sectors = {}
+            for holding in portfolio_holdings:
+                sector = 'Unknown'
+                for company in all_companies:
+                    if company.get('ticker_symbol') == holding.ticker_symbol:
+                        sector = company.get('sector', 'Unknown')
+                        break
+                portfolio_sectors[sector] = portfolio_sectors.get(sector, 0) + 1
+            
+            # Identify underrepresented sectors
+            all_sectors = set(c.get('sector', 'Unknown') for c in all_companies if c.get('sector'))
+            underweight_sectors = [s for s in all_sectors if portfolio_sectors.get(s, 0) < 2]
+            
+            # Find companies in underweight sectors with good metrics
+            for company in all_companies:
+                if company.get('sector') in underweight_sectors:
+                    # Check if it's a good opportunity
+                    pe_ratio = company.get('pe_ratio', 0)
+                    profit_margin = company.get('profit_margin', 0)
+                    
+                    if 0 < pe_ratio < 25 and profit_margin > 0.10:
+                        opportunities['value_opportunities'].append({
+                            'ticker': company.get('ticker_symbol'),
+                            'name': company.get('name'),
+                            'sector': company.get('sector'),
+                            'pe_ratio': pe_ratio,
+                            'reason': 'Underweight sector with good fundamentals'
+                        })
+            
+            # Momentum plays (holdings with strong recent performance)
+            for holding in portfolio_holdings:
+                if holding.gain_loss_percent() > 10:
+                    opportunities['momentum_plays'].append({
+                        'ticker': holding.ticker_symbol,
+                        'return': holding.gain_loss_percent(),
+                        'action': 'Consider taking profits or adding to position'
+                    })
+            
+            # Diversification needs
+            if len(portfolio_sectors) < 5:
+                opportunities['diversification_needs'].append({
+                    'issue': 'Low sector diversification',
+                    'current_sectors': len(portfolio_sectors),
+                    'recommendation': 'Add holdings in ' + ', '.join(underweight_sectors[:3])
+                })
+            
+            return opportunities
+            
+        except Exception as e:
+            logger.error(f"Opportunity scanning failed: {e}")
+            return opportunities        
+# ============================================================================
+# COMPANY DISCOVERY & AUTO-FETCH SERVICE
+# ============================================================================
+
+class CompanyDiscoveryService:
+    """Discover and auto-fetch companies from various sources"""
+    
+    def __init__(self):
+        self.db = UnifiedDatabase()
+        self.cache = {}
+        self.cache_duration = 3600  # 1 hour
+    
+    def search_companies_by_industry(self, industry: str, limit: int = 20) -> List[CompanyProfile]:
+        """Search companies by industry using yfinance screener"""
+        
+        # Industry to sector mapping
+        sector_map = {
+            'Technology': ['MSFT', 'AAPL', 'GOOGL', 'META', 'NVDA', 'TSLA', 'ORCL', 'IBM', 'INTC', 'AMD'],
+            'Healthcare': ['JNJ', 'UNH', 'PFE', 'ABBV', 'TMO', 'MRK', 'ABT', 'DHR', 'LLY', 'BMY'],
+            'Finance': ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'AXP', 'BLK', 'SCHW', 'USB'],
+            'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'HAL'],
+            'Retail': ['AMZN', 'WMT', 'HD', 'COST', 'TGT', 'LOW', 'TJX', 'DG', 'ROST', 'BBY'],
+            'Manufacturing': ['GE', 'CAT', 'HON', 'MMM', 'DE', 'EMR', 'ETN', 'ITW', 'PH', 'ROK'],
+            'Transportation': ['UPS', 'FDX', 'UAL', 'DAL', 'LUV', 'AAL', 'CSX', 'UNP', 'NSC', 'JBHT'],
+            'Real Estate': ['AMT', 'PLD', 'CCI', 'EQIX', 'PSA', 'DLR', 'O', 'WELL', 'AVB', 'EQR'],
+            'Education': ['CHGG', 'LRN', 'STRA', 'UTI', 'APOL', 'CECO', 'LINC', 'LOPE', 'PRDO', 'EDUC']
+        }
+        
+        # Get tickers for this industry
+        tickers = sector_map.get(industry, [])[:limit]
+        
+        companies = []
+        for ticker in tickers:
+            company = self.fetch_company_by_ticker(ticker)
+            if company:
+                companies.append(company)
+        
+        logger.info(f"Discovered {len(companies)} companies in {industry}")
+        return companies
+    
+    def fetch_top_sp500_companies(self, limit: int = 50) -> List[CompanyProfile]:
+        """Fetch top S&P 500 companies"""
+        
+        # Top S&P 500 tickers by market cap
+        top_tickers = [
+            # Mega Cap Tech
+            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA',
+            # Large Cap Tech
+            'AVGO', 'ORCL', 'CRM', 'ADBE', 'CSCO', 'ACN', 'AMD', 'IBM', 'INTC', 'QCOM',
+            # Healthcare
+            'UNH', 'JNJ', 'LLY', 'ABBV', 'MRK', 'TMO', 'ABT', 'PFE', 'DHR', 'BMY',
+            # Finance
+            'JPM', 'V', 'MA', 'BAC', 'WFC', 'GS', 'MS', 'BLK', 'C', 'SCHW',
+            # Consumer
+            'WMT', 'HD', 'PG', 'KO', 'PEP', 'COST', 'NKE', 'MCD', 'SBUX', 'TGT',
+            # Energy
+            'XOM', 'CVX', 'COP', 'SLB', 'EOG',
+            # Industrials
+            'UPS', 'HON', 'CAT', 'GE', 'MMM'
+        ][:limit]
+        
+        companies = []
+        with st.spinner(f"Fetching {len(top_tickers)} companies from market data..."):
+            progress_bar = st.progress(0)
+            
+            for i, ticker in enumerate(top_tickers):
+                company = self.fetch_company_by_ticker(ticker)
+                if company:
+                    companies.append(company)
+                
+                progress_bar.progress((i + 1) / len(top_tickers))
+            
+            progress_bar.empty()
+        
+        logger.info(f"Fetched {len(companies)} S&P 500 companies")
+        return companies
+    
+    def fetch_company_by_ticker(self, ticker: str, save_to_db: bool = False) -> Optional[CompanyProfile]:
+        """Fetch single company by ticker symbol"""
+        
+        # Check cache
+        if ticker in self.cache:
+            cached_time, company = self.cache[ticker]
+            if (datetime.now() - cached_time).seconds < self.cache_duration:
+                return company
+        
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            
+            # Check if valid data
+            if not info or 'longName' not in info:
+                logger.warning(f"No data for ticker {ticker}")
+                return None
+            
+            # Create company profile
+            company = CompanyProfile(
+                name=info.get('longName', ticker),
+                ticker_symbol=ticker,
+                exchange=info.get('exchange', ''),
+                industry=info.get('industry', 'Unknown'),
+                sector=info.get('sector', 'Unknown'),
+                description=info.get('longBusinessSummary', '')[:500],  # Truncate
+                website=info.get('website', ''),
+                location=f"{info.get('city', '')}, {info.get('state', '')}, {info.get('country', '')}",
+                country=info.get('country', ''),
+                employee_count=info.get('fullTimeEmployees', 0) or 0,
+                
+                # Financial metrics
+                revenue=info.get('totalRevenue', 0) or 0,
+                market_cap=info.get('marketCap', 0) or 0,
+                pe_ratio=info.get('trailingPE', 0) or 0,
+                pb_ratio=info.get('priceToBook', 0) or 0,
+                debt_to_equity=info.get('debtToEquity', 0) or 0,
+                roe=info.get('returnOnEquity', 0) or 0,
+                profit_margin=info.get('profitMargins', 0) or 0,
+                dividend_yield=info.get('dividendYield', 0) or 0,
+                beta=info.get('beta', 1.0) or 1.0,
+                current_price=info.get('currentPrice', 0) or 0,
+                volume=info.get('volume', 0) or 0,
+                
+                # Calculate growth rate from revenue growth
+                growth_rate=info.get('revenueGrowth', 0.10) or 0.10,
+                
+                # Auto-populate fields
+                size=self._determine_size(info.get('marketCap', 0)),
+                financial_health=self._determine_health(info),
+                is_public=True,
+                data_source='yfinance',
+                last_updated=datetime.now().isoformat()
+            )
+            
+            # Get price change
+            try:
+                hist = stock.history(period='2d')
+                if len(hist) >= 2:
+                    company.price_change_1d = ((hist['Close'][-1] / hist['Close'][-2]) - 1) * 100
+            except:
+                pass
+            
+            # Cache it
+            self.cache[ticker] = (datetime.now(), company)
+            
+            # Optionally save to database
+            if save_to_db:
+                self.db.save_company_profile(company)
+            
+            return company
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch {ticker}: {e}")
+            return None
+    
+    def _determine_size(self, market_cap: float) -> str:
+        """Determine company size category"""
+        if market_cap > 200e9:
+            return "Mega Cap"
+        elif market_cap > 10e9:
+            return "Large"
+        elif market_cap > 2e9:
+            return "Mid Cap"
+        elif market_cap > 300e6:
+            return "Small Cap"
+        else:
+            return "Micro Cap"
+    
+    def _determine_health(self, info: Dict) -> str:
+        """Determine financial health"""
+        score = 0
+        
+        # Profitability
+        if info.get('profitMargins', 0) > 0.15:
+            score += 1
+        
+        # Growth
+        if info.get('revenueGrowth', 0) > 0.10:
+            score += 1
+        
+        # Leverage
+        if info.get('debtToEquity', 100) < 50:
+            score += 1
+        
+        # Returns
+        if info.get('returnOnEquity', 0) > 0.15:
+            score += 1
+        
+        if score >= 3:
+            return "Excellent"
+        elif score >= 2:
+            return "Good"
+        elif score >= 1:
+            return "Fair"
+        else:
+            return "Poor"
+    
+    def bulk_import_companies(self, tickers: List[str]) -> int:
+        """Bulk import companies and save to database"""
+        imported = 0
+        
+        for ticker in tickers:
+            company = self.fetch_company_by_ticker(ticker, save_to_db=True)
+            if company:
+                imported += 1
+        
+        return imported
+    
+    def search_by_name(self, query: str) -> List[str]:
+        """Search for ticker symbols by company name"""
+        # Simple search - in production use proper API
+        search_list = {
+            'apple': 'AAPL',
+            'microsoft': 'MSFT',
+            'google': 'GOOGL',
+            'amazon': 'AMZN',
+            'tesla': 'TSLA',
+            'meta': 'META',
+            'facebook': 'META',
+            'nvidia': 'NVDA',
+            'netflix': 'NFLX',
+            'disney': 'DIS'
+        }
+        
+        query_lower = query.lower()
+        results = []
+        
+        for name, ticker in search_list.items():
+            if query_lower in name:
+                results.append(ticker)
+        
+        return results    
 
 # ============================================================================
 # BLOCKCHAIN IMPLEMENTATION
@@ -474,13 +2041,34 @@ class Contract:
 # ============================================================================
 # Replace the PartnershipPredictionModel class with this fixed version
 
+# ============================================================================
+# MACHINE LEARNING MODELS WITH .PKL SUPPORT - FIXED VERSION
+# ============================================================================
+
 class PartnershipPredictionModel:
-    """Fixed ML model with correct feature mapping and validation"""
+    """Fixed ML model with proper feature mapping, validation, and order enforcement"""
+    
+    # Class-level constant defining canonical feature order
+    CANONICAL_FEATURES = [
+        'company_a_revenue', 'company_b_revenue',
+        'company_a_market_cap', 'company_b_market_cap',
+        'company_a_employees', 'company_b_employees',
+        'company_a_profit_margin', 'company_b_profit_margin',
+        'company_a_revenue_growth', 'company_b_revenue_growth',
+        'partnership_value', 'estimated_duration',
+        'same_industry', 'same_sector', 'same_country',
+        'revenue_ratio', 'size_ratio', 'market_cap_ratio',
+        'avg_profit_margin', 'avg_revenue_growth',
+        'avg_return_on_equity', 'avg_debt_ratio', 'avg_beta',
+        'cultural_similarity', 'management_quality',
+        'integration_complexity', 'market_volatility',
+        'competitive_intensity'
+    ]
     
     def __init__(self):
         self.model = None
         self.scaler = None
-        self.feature_names = None
+        self.feature_names = self.CANONICAL_FEATURES.copy()
         self.model_trained = False
         self.model_info = {}
         self.last_prediction_source = None
@@ -488,43 +2076,83 @@ class PartnershipPredictionModel:
         self.load_model()
     
     def load_model(self):
-        """Load pre-trained model from pickle file with diagnostics"""
+        """Load pre-trained model from pickle file with comprehensive diagnostics"""
         try:
             with open('partnership_success_model.pkl', 'rb') as f:
                 model_artifacts = pickle.load(f)
                 self.model = model_artifacts['model']
                 self.scaler = model_artifacts.get('scaler', None)
-                self.feature_names = model_artifacts.get('feature_names', [])
+                loaded_feature_names = model_artifacts.get('feature_names', [])
+                
+                # CRITICAL: Validate feature compatibility
+                if loaded_feature_names:
+                    if len(loaded_feature_names) != len(self.CANONICAL_FEATURES):
+                        logger.error(
+                            f"Feature count mismatch: Pickle has {len(loaded_feature_names)} features, "
+                            f"expected {len(self.CANONICAL_FEATURES)}"
+                        )
+                        raise ValueError("Incompatible pickle file: wrong feature count")
+                    
+                    # Check if feature names match (order matters!)
+                    if loaded_feature_names != self.CANONICAL_FEATURES:
+                        logger.warning(
+                            f"Feature order mismatch detected!\n"
+                            f"Pickle order: {loaded_feature_names[:5]}...\n"
+                            f"Expected order: {self.CANONICAL_FEATURES[:5]}..."
+                        )
+                        # Try to reorder features (risky, but better than silent failure)
+                        try:
+                            # Check if it's just ordering difference
+                            if set(loaded_feature_names) == set(self.CANONICAL_FEATURES):
+                                logger.info("Features match but order differs - will handle at prediction time")
+                                self.feature_names = loaded_feature_names
+                            else:
+                                raise ValueError("Feature name mismatch - not just ordering")
+                        except:
+                            logger.error("Cannot reconcile feature differences")
+                            raise ValueError("Incompatible pickle file: feature name mismatch")
+                
+                # Validate scaler compatibility
+                if self.scaler:
+                    expected_features = self.scaler.n_features_in_
+                    if expected_features != len(self.feature_names):
+                        raise ValueError(
+                            f"Scaler expects {expected_features} features, "
+                            f"but model has {len(self.feature_names)}"
+                        )
                 
                 self.model_info = {
                     'model_type': type(self.model).__name__,
                     'has_scaler': self.scaler is not None,
-                    'feature_count': len(self.feature_names) if self.feature_names else 0,
+                    'feature_count': len(self.feature_names),
                     'supports_proba': hasattr(self.model, 'predict_proba'),
-                    'file_loaded': True
+                    'file_loaded': True,
+                    'features_validated': True
                 }
                 
                 self.model_trained = True
-                logger.info(f"ML model loaded successfully: {self.model_info['model_type']}")
+                logger.info(f"✅ ML model loaded successfully: {self.model_info['model_type']}")
+                logger.info(f"   Features: {len(self.feature_names)}, Scaler: {self.model_info['has_scaler']}")
                 
         except FileNotFoundError:
-            # Create a default model if file not found
             logger.warning("Model file not found, creating default Random Forest model")
             self._create_default_model()
             
         except Exception as e:
             logger.error(f"Error loading model: {e}, creating default model")
             self._create_default_model()
-            
+    
     def get_model_status(self) -> Dict[str, Any]:
         """Get detailed model status for UI display"""
         status = {
             'is_trained': self.model_trained,
             'prediction_source': 'ML Model' if self.model_trained else 'Rule-Based Logic',
             'model_info': self.model_info,
-            'last_prediction_source': self.last_prediction_source
+            'last_prediction_source': self.last_prediction_source,
+            'feature_count': len(self.feature_names),
+            'feature_order': self.feature_names[:5] + ['...'] if len(self.feature_names) > 5 else self.feature_names
         }
-        return status       
+        return status
     
     def _create_default_model(self):
         """Create and train a default model with synthetic data"""
@@ -532,12 +2160,14 @@ class PartnershipPredictionModel:
         from sklearn.preprocessing import StandardScaler
         from sklearn.model_selection import train_test_split
         
+        logger.info("Training default Random Forest model with synthetic data...")
+        
         # Generate synthetic training data
         n_samples = 1000
         np.random.seed(42)
         
-        # Create feature matrix with realistic distributions
-        features = np.zeros((n_samples, 28))
+        # Create feature matrix with realistic distributions - IN CANONICAL ORDER
+        features = np.zeros((n_samples, len(self.CANONICAL_FEATURES)))
         
         # Company metrics (log-normal distributions for financial data)
         features[:, 0] = np.random.lognormal(15, 2, n_samples)  # company_a_revenue
@@ -557,7 +2187,7 @@ class PartnershipPredictionModel:
         
         # Boolean features
         features[:, 12] = np.random.binomial(1, 0.4, n_samples)  # same_industry
-        features[:, 13] = np.random.binomial(1, 0.3, n_samples)  # same_sector  
+        features[:, 13] = np.random.binomial(1, 0.3, n_samples)  # same_sector
         features[:, 14] = np.random.binomial(1, 0.6, n_samples)  # same_country
         
         # Ratio features
@@ -596,69 +2226,73 @@ class PartnershipPredictionModel:
         target = (success_score > np.median(success_score)).astype(int)
         
         # Split data
-        X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(
+            features, target, test_size=0.2, random_state=42, stratify=target
+        )
         
         # Scale features
         self.scaler = StandardScaler()
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
         
+        # VERIFY: Check scaler learned correct number of features
+        assert self.scaler.n_features_in_ == len(self.CANONICAL_FEATURES), \
+            f"Scaler feature mismatch: {self.scaler.n_features_in_} != {len(self.CANONICAL_FEATURES)}"
+        
         # Train model
-        self.model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
+        self.model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            min_samples_split=5,
+            min_samples_leaf=2,
+            random_state=42,
+            n_jobs=-1
+        )
         self.model.fit(X_train_scaled, y_train)
         
-        # Store feature names
-        self.feature_names = [
-            'company_a_revenue', 'company_b_revenue',
-            'company_a_market_cap', 'company_b_market_cap',
-            'company_a_employees', 'company_b_employees',
-            'company_a_profit_margin', 'company_b_profit_margin',
-            'company_a_revenue_growth', 'company_b_revenue_growth',
-            'partnership_value', 'estimated_duration',
-            'same_industry', 'same_sector', 'same_country',
-            'revenue_ratio', 'size_ratio', 'market_cap_ratio',
-            'avg_profit_margin', 'avg_revenue_growth',
-            'avg_return_on_equity', 'avg_debt_ratio', 'avg_beta',
-            'cultural_similarity', 'management_quality',
-            'integration_complexity', 'market_volatility',
-            'competitive_intensity'
-        ]
+        # Store feature names in canonical order
+        self.feature_names = self.CANONICAL_FEATURES.copy()
         
         # Evaluate model
         train_score = self.model.score(X_train_scaled, y_train)
         test_score = self.model.score(X_test_scaled, y_test)
         
+        # Get feature importances
+        feature_importances = dict(zip(
+            self.feature_names,
+            self.model.feature_importances_
+        ))
+        top_features = sorted(feature_importances.items(), key=lambda x: x[1], reverse=True)[:5]
+        
         self.model_info = {
             'model_type': 'RandomForestClassifier',
             'has_scaler': True,
-            'feature_count': 28,
+            'feature_count': len(self.CANONICAL_FEATURES),
             'supports_proba': True,
             'file_loaded': False,
             'train_accuracy': train_score,
-            'test_accuracy': test_score
+            'test_accuracy': test_score,
+            'top_features': [f"{name}: {imp:.3f}" for name, imp in top_features],
+            'data_source': 'Synthetic (1000 samples)'
         }
         
         self.model_trained = True
-        logger.info(f"Default model created with test accuracy: {test_score:.2%}")
+        logger.info(f"✅ Default model created successfully")
+        logger.info(f"   Train accuracy: {train_score:.2%}, Test accuracy: {test_score:.2%}")
+        logger.info(f"   Top features: {', '.join([f[0] for f in top_features[:3]])}")
     
     def prepare_features(self, data: Dict[str, Any]) -> pd.DataFrame:
-        """Fixed feature preparation with proper data handling"""
+        """Fixed feature preparation with proper validation and ordering"""
         
-        # Extract and validate input data
-        company_a_revenue = float(data.get('primary_company_revenue', 0))
-        company_b_revenue = float(data.get('partner_company_revenue', 0))
-        
-        # Prevent division by zero
-        if company_a_revenue == 0:
-            company_a_revenue = 1000000  # Default $1M
-        if company_b_revenue == 0:
-            company_b_revenue = 1000000
+        # Extract and validate input data with safe defaults
+        company_a_revenue = max(float(data.get('primary_company_revenue', 1000000)), 1.0)
+        company_b_revenue = max(float(data.get('partner_company_revenue', 1000000)), 1.0)
         
         # Calculate derived values
         company_a_market_cap = float(data.get('primary_market_cap', company_a_revenue * 2.5))
         company_b_market_cap = float(data.get('partner_market_cap', company_b_revenue * 2.5))
-        company_a_employees = float(max(data.get('primary_company_size', 100), 1))
-        company_b_employees = float(max(data.get('partner_company_size', 100), 1))
+        company_a_employees = max(float(data.get('primary_company_size', 100)), 1.0)
+        company_b_employees = max(float(data.get('partner_company_size', 100)), 1.0)
         
         # Extract other metrics with sensible defaults
         company_a_profit_margin = float(data.get('primary_profit_margin', 0.10))
@@ -666,112 +2300,197 @@ class PartnershipPredictionModel:
         company_a_revenue_growth = float(data.get('primary_growth_rate', 0.10))
         company_b_revenue_growth = float(data.get('partner_growth_rate', 0.10))
         
-        # Create feature dictionary
-        feature_dict = {
-            'company_a_revenue': company_a_revenue,
-            'company_b_revenue': company_b_revenue,
-            'company_a_market_cap': company_a_market_cap,
-            'company_b_market_cap': company_b_market_cap,
-            'company_a_employees': company_a_employees,
-            'company_b_employees': company_b_employees,
-            'company_a_profit_margin': company_a_profit_margin,
-            'company_b_profit_margin': company_b_profit_margin,
-            'company_a_revenue_growth': company_a_revenue_growth,
-            'company_b_revenue_growth': company_b_revenue_growth,
-            'partnership_value': float(data.get('estimated_value', 1000000)),
-            'estimated_duration': float(data.get('duration_years', 2.0)),
-            'same_industry': 1.0 if data.get('primary_industry') == data.get('partner_industry') else 0.0,
-            'same_sector': 1.0 if data.get('primary_industry') == data.get('partner_industry') else 0.0,
-            'same_country': 1.0 if self._same_country(data.get('primary_location'), data.get('partner_location')) else 0.0,
-            'revenue_ratio': min(company_a_revenue, company_b_revenue) / max(company_a_revenue, company_b_revenue),
-            'size_ratio': min(company_a_employees, company_b_employees) / max(company_a_employees, company_b_employees),
-            'market_cap_ratio': min(company_a_market_cap, company_b_market_cap) / max(company_a_market_cap, company_b_market_cap),
-            'avg_profit_margin': (company_a_profit_margin + company_b_profit_margin) / 2,
-            'avg_revenue_growth': (company_a_revenue_growth + company_b_revenue_growth) / 2,
-            'avg_return_on_equity': 0.15,  # Default values
-            'avg_debt_ratio': 0.4,
-            'avg_beta': 1.0,
-            'cultural_similarity': 0.7,
-            'management_quality': 0.7,
-            'integration_complexity': 0.3,
-            'market_volatility': 0.3,
-            'competitive_intensity': 0.4
+        partnership_value = max(float(data.get('estimated_value', 1000000)), 1.0)
+        duration_map = {
+            "6 months": 0.5, "1 year": 1, "2 years": 2,
+            "3 years": 3, "5 years": 5, "Indefinite": 10
         }
+        duration_str = data.get('duration', '2 years')
+        estimated_duration = duration_map.get(duration_str, float(data.get('duration_years', 2.0)))
         
-        # Create DataFrame with proper feature order
-        features_df = pd.DataFrame([feature_dict])[self.feature_names]
+        # Boolean features
+        primary_industry = str(data.get('primary_industry', '')).lower()
+        partner_industry = str(data.get('partner_industry', '')).lower()
+        same_industry = 1.0 if primary_industry == partner_industry and primary_industry else 0.0
+        same_sector = same_industry  # Simplified
         
-        # Log feature statistics for debugging
-        logger.debug(f"Feature statistics: Min={features_df.min().min():.2f}, Max={features_df.max().max():.2f}, Mean={features_df.mean().mean():.2f}")
+        primary_location = str(data.get('primary_location', ''))
+        partner_location = str(data.get('partner_location', ''))
+        same_country = 1.0 if self._same_country(primary_location, partner_location) else 0.0
+        
+        # Calculate ratios safely
+        revenue_ratio = self._safe_ratio(company_a_revenue, company_b_revenue)
+        size_ratio = self._safe_ratio(company_a_employees, company_b_employees)
+        market_cap_ratio = self._safe_ratio(company_a_market_cap, company_b_market_cap)
+        
+        # Averaged metrics
+        avg_profit_margin = (company_a_profit_margin + company_b_profit_margin) / 2
+        avg_revenue_growth = (company_a_revenue_growth + company_b_revenue_growth) / 2
+        
+        # Default soft factors
+        avg_return_on_equity = 0.15
+        avg_debt_ratio = 0.4
+        avg_beta = 1.0
+        cultural_similarity = 0.7
+        management_quality = 0.7
+        integration_complexity = 0.3
+        market_volatility = 0.3
+        competitive_intensity = 0.4
+        
+        # BUILD FEATURE ARRAY IN EXACT CANONICAL ORDER
+        feature_values = [
+            company_a_revenue,           # 0
+            company_b_revenue,           # 1
+            company_a_market_cap,        # 2
+            company_b_market_cap,        # 3
+            company_a_employees,         # 4
+            company_b_employees,         # 5
+            company_a_profit_margin,     # 6
+            company_b_profit_margin,     # 7
+            company_a_revenue_growth,    # 8
+            company_b_revenue_growth,    # 9
+            partnership_value,           # 10
+            estimated_duration,          # 11
+            same_industry,               # 12
+            same_sector,                 # 13
+            same_country,                # 14
+            revenue_ratio,               # 15
+            size_ratio,                  # 16
+            market_cap_ratio,            # 17
+            avg_profit_margin,           # 18
+            avg_revenue_growth,          # 19
+            avg_return_on_equity,        # 20
+            avg_debt_ratio,              # 21
+            avg_beta,                    # 22
+            cultural_similarity,         # 23
+            management_quality,          # 24
+            integration_complexity,      # 25
+            market_volatility,           # 26
+            competitive_intensity        # 27
+        ]
+        
+        # CRITICAL: Verify feature count matches
+        if len(feature_values) != len(self.feature_names):
+            raise ValueError(
+                f"Feature count mismatch: created {len(feature_values)} values, "
+                f"expected {len(self.feature_names)}"
+            )
+        
+        # Create DataFrame with explicit column ordering
+        features_df = pd.DataFrame(
+            [feature_values],
+            columns=self.feature_names
+        )
+        
+        # VALIDATION CHECKS
+        # 1. Check for NaN values
+        if features_df.isnull().any().any():
+            nan_cols = features_df.columns[features_df.isnull().any()].tolist()
+            raise ValueError(f"NaN values detected in features: {nan_cols}")
+        
+        # 2. Check for infinite values
+        if np.isinf(features_df.values).any():
+            raise ValueError("Infinite values detected in features")
+        
+        # 3. Check for reasonable value ranges
+        non_zero_count = (features_df.iloc[0] != 0).sum()
+        if non_zero_count < 10:
+            logger.warning(f"Only {non_zero_count} non-zero features - possible data quality issue")
+        
+        # 4. Log feature summary for debugging
+        logger.debug(f"Feature stats: min={features_df.min().min():.2e}, "
+                    f"max={features_df.max().max():.2e}, "
+                    f"mean={features_df.mean().mean():.2e}")
         
         return features_df
     
     def _safe_ratio(self, a: float, b: float) -> float:
         """Calculate safe ratio avoiding division by zero"""
-        if b == 0:
-            return 1.0 if a == 0 else 2.0
+        if b == 0 or a == 0:
+            return 1.0 if a == b else 0.5
         return min(a, b) / max(a, b)
     
     def _same_country(self, loc1: str, loc2: str) -> bool:
         """Check if two locations are in the same country"""
         if not loc1 or not loc2:
             return False
-        # Extract country from location string
-        country1 = loc1.split(',')[-1].strip() if ',' in loc1 else loc1
-        country2 = loc2.split(',')[-1].strip() if ',' in loc2 else loc2
-        return country1.lower() == country2.lower()
+        country1 = loc1.split(',')[-1].strip().lower() if ',' in loc1 else loc1.lower()
+        country2 = loc2.split(',')[-1].strip().lower() if ',' in loc2 else loc2.lower()
+        return country1 == country2
     
     def predict_success_probability(self, data: Dict[str, Any]) -> float:
-        """Predict partnership success probability with correct feature mapping"""
+        """Predict partnership success probability with comprehensive validation"""
         
         if self.model_trained and self.model is not None:
             try:
-                # Log the input for debugging
-                logger.debug("=" * 50)
-                logger.debug("Prediction Input:")
-                logger.debug(f"  Primary Company: Revenue=${data.get('primary_company_revenue', 0):,.0f}")
-                logger.debug(f"  Partner Company: Revenue=${data.get('partner_company_revenue', 0):,.0f}")
-                logger.debug(f"  Industries: {data.get('primary_industry')} × {data.get('partner_industry')}")
+                logger.debug("=" * 60)
+                logger.debug("ML PREDICTION PIPELINE")
+                logger.debug(f"Primary Company Revenue: ${data.get('primary_company_revenue', 0):,.0f}")
+                logger.debug(f"Partner Company Revenue: ${data.get('partner_company_revenue', 0):,.0f}")
+                logger.debug(f"Industries: {data.get('primary_industry')} × {data.get('partner_industry')}")
                 
-                # Prepare features with correct mapping
+                # Prepare features with validation
                 features_df = self.prepare_features(data)
+                logger.debug(f"Features prepared: {features_df.shape}")
                 
-                # Check for all-zero features (indicates mapping problem)
+                # Verify feature count
+                if len(features_df.columns) != len(self.feature_names):
+                    raise ValueError(
+                        f"Feature dimension mismatch: {len(features_df.columns)} != {len(self.feature_names)}"
+                    )
+                
+                # Verify column order
+                if list(features_df.columns) != self.feature_names:
+                    raise ValueError("Feature order mismatch - columns don't match expected order")
+                
+                # Check for data quality issues
                 non_zero_count = (features_df.iloc[0] != 0).sum()
-                logger.debug(f"  Non-zero features: {non_zero_count}/28")
+                logger.debug(f"Non-zero features: {non_zero_count}/{len(self.feature_names)}")
                 
                 if non_zero_count < 5:
-                    logger.warning("Too few non-zero features, likely mapping issue")
+                    logger.warning("Very few non-zero features - likely data mapping issue")
+                    return self.rule_based_prediction(data)
                 
                 # Apply scaling
                 if self.scaler:
-                    features_scaled = pd.DataFrame(
-                        self.scaler.transform(features_df),
-                        columns=features_df.columns
-                    )
-                    logger.debug("Applied StandardScaler")
+                    # Verify scaler compatibility
+                    if self.scaler.n_features_in_ != len(features_df.columns):
+                        raise ValueError(
+                            f"Scaler expects {self.scaler.n_features_in_} features, "
+                            f"got {len(features_df.columns)}"
+                        )
+                    
+                    features_scaled = self.scaler.transform(features_df)
+                    logger.debug(f"Features scaled: shape={features_scaled.shape}")
                 else:
-                    features_scaled = features_df
+                    features_scaled = features_df.values
+                    logger.debug("No scaling applied")
                 
                 # Get prediction
                 if hasattr(self.model, 'predict_proba'):
                     probability = self.model.predict_proba(features_scaled)[0, 1]
+                    logger.debug(f"Raw probability: {probability:.4f}")
                 else:
-                    probability = self.model.predict(features_scaled)[0]
+                    probability = float(self.model.predict(features_scaled)[0])
+                    logger.debug(f"Binary prediction: {probability}")
                 
-                logger.info(f"ML Prediction: {probability:.1%}")
+                # Sanity check prediction
+                if probability < 0.01 or probability > 0.99:
+                    logger.warning(f"Extreme prediction detected: {probability:.1%}")
                 
-                # Sanity check - if we get exactly 15.42%, features might be wrong
-                if abs(probability - 0.1542) < 0.0001:
-                    logger.warning("Got default 15.42% - features likely all zeros/defaults!")
-                    # Use rule-based as fallback
+                # Check for the mysterious 15.42% bug
+                if abs(probability - 0.1542) < 0.001:
+                    logger.error("Got 15.42% prediction - likely feature mapping bug!")
+                    logger.error("Falling back to rule-based prediction")
                     return self.rule_based_prediction(data)
                 
+                logger.info(f"✅ ML Prediction: {probability:.1%}")
                 self.last_prediction_source = f"ML Model ({self.model_info['model_type']})"
+                
                 return float(probability)
                 
             except Exception as e:
-                logger.error(f"ML prediction failed: {e}")
+                logger.error(f"ML prediction failed: {e}", exc_info=True)
                 self.last_prediction_source = f"Rule-Based (ML Error: {str(e)[:50]}...)"
                 return self.rule_based_prediction(data)
         else:
@@ -780,7 +2499,8 @@ class PartnershipPredictionModel:
     
     def rule_based_prediction(self, data: Dict[str, Any]) -> float:
         """Enhanced rule-based prediction with detailed logging"""
-        logger.debug("Starting rule-based prediction calculation")
+        logger.debug("=" * 60)
+        logger.debug("RULE-BASED PREDICTION")
         
         score = 0.5
         score_components = {}
@@ -793,7 +2513,7 @@ class PartnershipPredictionModel:
             revenue_boost = revenue_ratio * 0.15
             score += revenue_boost
             score_components['revenue_compatibility'] = revenue_boost
-            logger.debug(f"   Revenue ratio: {revenue_ratio:.2f} -> +{revenue_boost:.3f}")
+            logger.debug(f"Revenue ratio: {revenue_ratio:.2f} → +{revenue_boost:.3f}")
         
         # Reputation factors
         avg_reputation = (data.get('primary_reputation_score', 0.5) + 
@@ -801,7 +2521,7 @@ class PartnershipPredictionModel:
         reputation_boost = avg_reputation * 0.2
         score += reputation_boost
         score_components['reputation_factor'] = reputation_boost
-        logger.debug(f"   Avg reputation: {avg_reputation:.2f} -> +{reputation_boost:.3f}")
+        logger.debug(f"Avg reputation: {avg_reputation:.2f} → +{reputation_boost:.3f}")
         
         # Growth alignment
         primary_growth = data.get('primary_growth_rate', 0)
@@ -810,15 +2530,14 @@ class PartnershipPredictionModel:
         growth_boost = max(0, 0.1 - growth_diff / 10)
         score += growth_boost
         score_components['growth_alignment'] = growth_boost
-        logger.debug(f"   Growth diff: {growth_diff:.2f} -> +{growth_boost:.3f}")
+        logger.debug(f"Growth diff: {growth_diff:.2f} → +{growth_boost:.3f}")
         
         # Industry alignment
-        industry_boost = 0
         if data.get('primary_industry') == data.get('partner_industry'):
             industry_boost = 0.1
             score += industry_boost
             score_components['industry_match'] = industry_boost
-            logger.debug(f"   Industry match -> +{industry_boost:.3f}")
+            logger.debug(f"Industry match → +{industry_boost:.3f}")
         
         # Sustainability alignment
         avg_sustainability = (data.get('primary_sustainability_score', 7) + 
@@ -826,12 +2545,12 @@ class PartnershipPredictionModel:
         sustainability_boost = avg_sustainability * 0.1
         score += sustainability_boost
         score_components['sustainability_alignment'] = sustainability_boost
-        logger.debug(f"   Avg sustainability: {avg_sustainability:.2f} -> +{sustainability_boost:.3f}")
+        logger.debug(f"Avg sustainability: {avg_sustainability:.2f} → +{sustainability_boost:.3f}")
         
         final_score = min(max(score, 0), 1)
         
-        logger.info(f"Rule-based prediction complete: {final_score:.1%}")
-        logger.debug(f"   Score breakdown: {score_components}")
+        logger.info(f"✅ Rule-based prediction: {final_score:.1%}")
+        logger.debug(f"Score breakdown: {score_components}")
         
         return final_score
     
@@ -895,10 +2614,10 @@ class PartnershipPredictionModel:
         if risks['market'] > 0.5:
             strategies.append("Perform detailed market analysis and develop contingency plans")
         
-        return strategies
+        return strategies if strategies else ["Continue current risk management practices"]
     
     def inspect_pkl_file(self, filepath: str = 'partnership_success_model.pkl') -> Dict[str, Any]:
-        """Inspect the contents of the .pkl file"""
+        """Inspect the contents of the .pkl file for debugging"""
         try:
             with open(filepath, 'rb') as f:
                 data = pickle.load(f)
@@ -912,12 +2631,19 @@ class PartnershipPredictionModel:
             
             if isinstance(data, dict):
                 for key, value in data.items():
+                    value_type = type(value).__name__
                     inspection['data_structure'][key] = {
-                        'type': type(value).__name__,
-                        'attributes': [attr for attr in dir(value) if not attr.startswith('_')][:10],
-                        'has_predict': hasattr(value, 'predict') if hasattr(value, '__dict__') else False,
-                        'has_predict_proba': hasattr(value, 'predict_proba') if hasattr(value, '__dict__') else False
+                        'type': value_type,
+                        'has_predict': hasattr(value, 'predict'),
+                        'has_predict_proba': hasattr(value, 'predict_proba')
                     }
+                    
+                    if key == 'feature_names' and isinstance(value, list):
+                        inspection['data_structure'][key]['count'] = len(value)
+                        inspection['data_structure'][key]['first_5'] = value[:5]
+                    
+                    if hasattr(value, 'n_features_in_'):
+                        inspection['data_structure'][key]['n_features'] = value.n_features_in_
             
             return inspection
             
@@ -926,7 +2652,7 @@ class PartnershipPredictionModel:
         except Exception as e:
             return {'file_exists': True, 'error': f'Cannot read file: {str(e)}'}
         
-        
+
 def run_validation_case_study():
     """Real-world validation using historical partnership data"""
     
@@ -992,7 +2718,31 @@ def run_validation_case_study():
             'ROI Error': f"{roi_error:.1%}"
         })
     
-    return pd.DataFrame(results)        
+    return pd.DataFrame(results)     
+
+
+# Test the fixed class
+model = PartnershipPredictionModel()
+
+# Check model status
+status = model.get_model_status()
+print(f"Model: {status['prediction_source']}")
+print(f"Features: {status['feature_count']}")
+
+# Test prediction
+test_data = {
+    'primary_company_revenue': 5000000,
+    'partner_company_revenue': 3000000,
+    'primary_company_size': 200,
+    'partner_company_size': 150,
+    'primary_industry': 'Technology',
+    'partner_industry': 'Technology',
+    'estimated_value': 1000000
+}
+
+prob = model.predict_success_probability(test_data)
+print(f"Success Probability: {prob:.1%}")
+print(f"Source: {model.last_prediction_source}")
 class PerformanceBenchmarks:
     """Compare AI system performance with traditional methods"""
     
@@ -1931,7 +3681,21 @@ def init_session_state():
         st.session_state.wizard_data = {}
     if 'chat_messages' not in st.session_state:
         st.session_state.chat_messages = []
-
+    # Add to init_session_state()
+    if 'show_discovery' not in st.session_state:
+        st.session_state.show_discovery = False
+    if 'discovery_service' not in st.session_state:
+        st.session_state.discovery_service = CompanyDiscoveryService()    
+    if 'selected_tab' not in st.session_state:
+        st.session_state.selected_tab = 0    
+    if 'rag_available' not in st.session_state:
+        st.session_state.rag_available = RAG_AVAILABLE
+    
+    if 'rag_query' not in st.session_state:
+        st.session_state.rag_query = ''
+    
+    if 'query_history' not in st.session_state:
+        st.session_state.query_history = []
 def create_sample_data():
     """Create comprehensive sample company profiles"""
     db = st.session_state.db
@@ -2085,6 +3849,7 @@ def show_company_selector(key_prefix="", multiselect=False, exclude_ids=None):
             return company_id
         return None
 
+    
 def show_enhanced_company_form(profile: CompanyProfile = None, key_prefix=""):
     """Enhanced company profile form with validation"""
     if profile is None:
@@ -2843,12 +4608,13 @@ body {
             "🤝 Partnership Analysis": [
                 ("🎯 Wizard", "PartnershipWizard"),
                 ("🤖 Multi-Agent", "AutoGen"),
-                ("🔬 AI Predictions", "Predictions"),
+                ("🔬 AI Predictions", "Predictions"), ("🧠 RAG Assistant", "RAGAssistant") if RAG_AVAILABLE else None,  # NEW
                 ("🌱 Sustainability", "Sustainability"),
                 ("📊 Validation", "Validation")
             ],
             "📊 Analytics & Ops": [
                 ("📊 Dashboard", "Dashboard"),
+                ("💼 Portfolio Manager", "PortfolioManager"),  # ← ADD THIS LINE
                 ("🤝 Partnerships", "Partnerships"),
                 ("📜 Contracts", "Contracts"),
                 ("⛓️ Blockchain", "Blockchain")
@@ -2857,7 +4623,10 @@ body {
         
         for section_title, items in nav_sections.items():
             st.markdown(f"<p style='color: rgba(255,255,255,0.6); font-size: 0.8rem; margin-bottom: 0.5rem;'>{section_title}</p>", unsafe_allow_html=True)
-            for label, page in items:
+            for item in items:
+                if item is None:  # Skip if RAG not available
+                    continue
+                label, page = item
                 if st.button(label, width="stretch", key=page):
                     st.session_state.current_page = page
             st.markdown("")
@@ -2879,8 +4648,13 @@ body {
         with col2:
             st.markdown(f"<p style='color: rgba(255,255,255,0.9); margin: 0;'>⛓️ {len(st.session_state.blockchain.chain)}</p>", unsafe_allow_html=True)
             st.markdown("<p style='color: rgba(255,255,255,0.6); font-size: 0.7rem; margin: 0;'>Blocks</p>", unsafe_allow_html=True)
+        if RAG_AVAILABLE:
+            st.markdown("<p style='color: rgba(255,255,255,0.9); margin-top: 0.5rem;'>🧠 RAG: ✅ Active</p>", unsafe_allow_html=True)
+        else:
+            st.markdown("<p style='color: rgba(255,255,255,0.6); margin-top: 0.5rem;'>🧠 RAG: ⚠️ Disabled</p>", unsafe_allow_html=True)
         
         st.markdown("</div>", unsafe_allow_html=True)
+
     
     # Main content routing remains the same
     page = st.session_state.current_page
@@ -2897,6 +4671,8 @@ body {
         show_autogen_analysis()
     elif page == "Predictions":
         show_ai_predictions()
+    elif page == "RAGAssistant" and RAG_AVAILABLE:  # NEW
+        show_advanced_rag_system()    
     elif page == "Sustainability":
         show_sustainability()
     elif page == "Partnerships":
@@ -2905,6 +4681,8 @@ body {
         show_contracts()
     elif page == "Blockchain":
         show_blockchain()
+    elif page == "PortfolioManager":  # ← ADD THIS SINGLE LINE
+        show_portfolio_manager()
     elif page == "Validation":  # ADD THIS
         show_system_validation()    
 
@@ -2915,6 +4693,8 @@ def show_dashboard():
        Nexus Sphere
     </h1>
     """, unsafe_allow_html=True)
+    if not RAG_AVAILABLE:
+        show_rag_status_banner()
     
     # Animated welcome message
     st.markdown("""
@@ -3106,80 +4886,382 @@ def show_company_manager():
                         except:
                             pass
                 st.success(f"Imported {imported} companies")
+    if RAG_AVAILABLE and 'advanced_rag' in st.session_state:
+        st.markdown("---")
+        st.subheader("🧠 Knowledge Base Status")
+        
+        try:
+            rag = st.session_state.advanced_rag
+            stats = rag.get_statistics()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    "Documents Indexed",
+                    f"{stats['collection_info'].get('points_count', 0):,}"
+                )
+            
+            with col2:
+                st.metric(
+                    "SEC Filings",
+                    f"{stats['ingestion_stats'].get('sec_filings', 0):,}"
+                )
+            
+            with col3:
+                st.metric(
+                    "PDFs",
+                    f"{stats['ingestion_stats'].get('pdfs', 0):,}"
+                )
+            
+            with col4:
+                st.metric(
+                    "Web Articles",
+                    f"{stats['ingestion_stats'].get('urls', 0):,}"
+                )
+        except:
+            pass                
 
 def show_companies_overview():
-    """Company overview with search and filters"""
-    st.title("👥 Companies Overview")
+    """Enhanced company overview with auto-discovery"""
+    st.title("👥 Companies Database")
+    
+    # Top action bar
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        st.markdown("### Manage Your Company Network")
+    
+    with col2:
+        if st.button("🔄 Discover Companies", help="Auto-fetch from market data"):
+            st.session_state.show_discovery = True
+    
+    with col3:
+        if st.button("➕ Add Manual", help="Add company manually"):
+            st.session_state.current_page = "CompanyManager"
+            st.rerun()
+    
+    # Company Discovery Modal
+    if st.session_state.get('show_discovery', False):
+        with st.expander("🔍 Company Discovery", expanded=True):
+            st.markdown("### Discover & Import Companies")
+            
+            discovery_type = st.selectbox(
+                "Discovery Method",
+                ["Top S&P 500", "By Industry", "By Ticker", "Bulk Import"]
+            )
+            
+            discovery_service = CompanyDiscoveryService()
+            
+            if discovery_type == "Top S&P 500":
+                limit = st.slider("Number of companies", 10, 100, 50)
+                
+                if st.button("🚀 Fetch Top Companies", type="primary"):
+                    companies_to_save = discovery_service.fetch_top_sp500_companies(limit)
+                    
+                    if companies_to_save:
+                        # Store in session state for preview
+                        st.session_state.fetched_companies = companies_to_save
+                        
+                        # Preview
+                        st.success(f"✅ Discovered {len(companies_to_save)} companies")
+                        preview_df = pd.DataFrame([{
+                            'Ticker': c.ticker_symbol,
+                            'Name': c.name,
+                            'Industry': c.industry,
+                            'Market Cap': f"${c.market_cap/1e9:.1f}B",
+                            'Price': f"${c.current_price:.2f}",
+                            'Revenue': f"${c.revenue/1e9:.1f}B"
+                        } for c in companies_to_save[:10]])
+                        st.dataframe(preview_df, use_container_width=True)
+                        
+                        st.info(f"📊 Preview showing first 10 of {len(companies_to_save)} companies")
+                
+                # Show save button if companies are fetched
+                if 'fetched_companies' in st.session_state and st.session_state.fetched_companies:
+                    st.markdown("---")
+                    
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    
+                    with col1:
+                        st.write(f"**Ready to save {len(st.session_state.fetched_companies)} companies**")
+                    
+                    with col2:
+                        if st.button("💾 Save All to Database", type="primary", key="save_all_btn"):
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+                            
+                            saved_count = 0
+                            failed_count = 0
+                            duplicate_count = 0
+                            
+                            companies_to_save = st.session_state.fetched_companies
+                            
+                            for i, company in enumerate(companies_to_save):
+                                status_text.text(f"Saving {company.name}... ({i+1}/{len(companies_to_save)})")
+                                
+                                try:
+                                    # Check if already exists
+                                    existing = st.session_state.db.get_company_by_ticker(company.ticker_symbol)
+                                    
+                                    if existing:
+                                        duplicate_count += 1
+                                        logger.info(f"♻️ Company {company.ticker_symbol} already exists")
+                                    else:
+                                        saved_id = st.session_state.db.save_company_profile(company)
+                                        saved_count += 1
+                                        logger.info(f"✅ Saved {company.name} with ID: {saved_id}")
+                                
+                                except Exception as e:
+                                    failed_count += 1
+                                    logger.error(f"❌ Failed to save {company.name}: {e}")
+                                
+                                progress_bar.progress((i + 1) / len(companies_to_save))
+                            
+                            progress_bar.empty()
+                            status_text.empty()
+                            
+                            # Show results
+                            st.success(f"✅ Successfully saved: {saved_count} companies")
+                            if duplicate_count > 0:
+                                st.info(f"ℹ️ Skipped {duplicate_count} duplicates")
+                            if failed_count > 0:
+                                st.warning(f"⚠️ Failed to save: {failed_count} companies")
+                            
+                            # Clear fetched companies and close discovery
+                            del st.session_state.fetched_companies
+                            st.session_state.show_discovery = False
+                            
+                            # Force reload
+                            time.sleep(1)
+                            st.rerun()
+                    
+                    with col3:
+                        if st.button("❌ Cancel", key="cancel_save_btn"):
+                            del st.session_state.fetched_companies
+                            st.session_state.show_discovery = False
+                            st.rerun()
+            
+            elif discovery_type == "By Industry":
+                industry = st.selectbox(
+                    "Select Industry",
+                    ["Technology", "Healthcare", "Finance", "Energy", "Retail", 
+                     "Manufacturing", "Transportation", "Real Estate", "Education"]
+                )
+                
+                if st.button("🔍 Search Industry", type="primary"):
+                    companies = discovery_service.search_companies_by_industry(industry)
+                    
+                    if companies:
+                        st.success(f"✅ Found {len(companies)} {industry} companies")
+                        
+                        # Display companies
+                        for company in companies:
+                            with st.expander(f"{company.ticker_symbol} - {company.name}"):
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.write(f"**Market Cap:** ${company.market_cap/1e9:.1f}B")
+                                    st.write(f"**Price:** ${company.current_price:.2f}")
+                                with col2:
+                                    st.write(f"**P/E:** {company.pe_ratio:.1f}")
+                                    st.write(f"**Beta:** {company.beta:.2f}")
+                                with col3:
+                                    st.write(f"**Employees:** {company.employee_count:,}")
+                                    st.write(f"**Revenue:** ${company.revenue/1e9:.1f}B")
+                                
+                                if st.button(f"💾 Save {company.ticker_symbol}", key=f"save_{company.ticker_symbol}"):
+                                    st.session_state.db.save_company_profile(company)
+                                    st.success(f"Saved {company.name}!")
+            
+            elif discovery_type == "By Ticker":
+                ticker = st.text_input("Enter Ticker Symbol", placeholder="AAPL, MSFT, GOOGL").upper()
+                
+                if ticker and st.button("🔍 Fetch Company", type="primary"):
+                    company = discovery_service.fetch_company_by_ticker(ticker)
+                    
+                    if company:
+                        st.success(f"✅ Found: {company.name}")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**Industry:** {company.industry}")
+                            st.write(f"**Market Cap:** ${company.market_cap/1e9:.1f}B")
+                            st.write(f"**Revenue:** ${company.revenue/1e9:.1f}B")
+                            st.write(f"**Employees:** {company.employee_count:,}")
+                        
+                        with col2:
+                            st.write(f"**Current Price:** ${company.current_price:.2f}")
+                            st.write(f"**P/E Ratio:** {company.pe_ratio:.1f}")
+                            st.write(f"**Profit Margin:** {company.profit_margin*100:.1f}%")
+                            st.write(f"**Beta:** {company.beta:.2f}")
+                        
+                        if st.button("💾 Save to Database", type="primary"):
+                            st.session_state.db.save_company_profile(company)
+                            st.success(f"Saved {company.name}!")
+                            st.session_state.show_discovery = False
+                            st.rerun()
+                    else:
+                        st.error(f"Could not find data for ticker: {ticker}")
+            
+            elif discovery_type == "Bulk Import":
+                tickers_input = st.text_area(
+                    "Enter Ticker Symbols (comma or line separated)",
+                    placeholder="AAPL, MSFT, GOOGL\nAMZN, TSLA, META",
+                    height=150
+                )
+                
+                if st.button("📥 Bulk Import", type="primary"):
+                    # Parse tickers
+                    tickers = []
+                    for line in tickers_input.replace(',', '\n').split('\n'):
+                        ticker = line.strip().upper()
+                        if ticker:
+                            tickers.append(ticker)
+                    
+                    if tickers:
+                        imported = discovery_service.bulk_import_companies(tickers)
+                        st.success(f"✅ Imported {imported} / {len(tickers)} companies")
+                        st.session_state.show_discovery = False
+                        st.rerun()
+    
+    # Display existing companies
+    st.markdown("---")
     
     companies = st.session_state.db.get_all_companies()
     
     if not companies:
-        st.info("No companies registered yet.")
-        if st.button("➕ Create First Company"):
-            st.session_state.current_page = "CompanyManager"
-            st.rerun()
+        st.info("📭 No companies in database. Use 'Discover Companies' to get started!")
         return
     
-    # Search and filters
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # Statistics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    public_companies = [c for c in companies if c.get('is_public')]
+    total_market_cap = sum(c.get('market_cap', 0) for c in companies)
+    
     with col1:
-        search = st.text_input("🔍 Search companies...", placeholder="Name or description")
+        st.metric("Total Companies", len(companies))
+    with col2:
+        st.metric("Public Companies", len(public_companies))
+    with col3:
+        st.metric("Combined Market Cap", f"${total_market_cap/1e12:.2f}T")
+    with col4:
+        industries = set(c.get('industry', 'Unknown') for c in companies)
+        st.metric("Industries", len(industries))
+    
+    # Filters
+    st.markdown("### 🔍 Filter & Search")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        search = st.text_input("🔍 Search", placeholder="Company name or ticker")
     with col2:
         industry_filter = st.multiselect("Industry", 
-                                        options=list(set(c.get('industry', '') for c in companies)))
+                                        options=sorted(set(c.get('industry', '') for c in companies if c.get('industry'))))
     with col3:
         size_filter = st.multiselect("Size", 
-                                    options=list(set(c.get('size', '') for c in companies)))
+                                    options=sorted(set(c.get('size', '') for c in companies if c.get('size'))))
+    with col4:
+        data_source_filter = st.multiselect("Source",
+                                           options=['manual', 'yfinance'])
     
     # Apply filters
     filtered = companies
+    
     if search:
         search_lower = search.lower()
         filtered = [c for c in filtered 
                    if search_lower in c.get('name', '').lower() 
+                   or search_lower in c.get('ticker_symbol', '').lower()
                    or search_lower in c.get('description', '').lower()]
+    
     if industry_filter:
         filtered = [c for c in filtered if c.get('industry') in industry_filter]
+    
     if size_filter:
         filtered = [c for c in filtered if c.get('size') in size_filter]
     
-    st.write(f"Showing {len(filtered)} of {len(companies)} companies")
+    if data_source_filter:
+        filtered = [c for c in filtered if c.get('data_source') in data_source_filter]
     
-    # Display companies in cards
+    st.write(f"Showing **{len(filtered)}** of **{len(companies)}** companies")
+    
+    # Display companies in enhanced cards
     for company in filtered:
-        with st.expander(f"🏢 {company.get('name', '')} - {company.get('industry', 'Unknown')}"):
-            col1, col2, col3 = st.columns(3)
+        with st.expander(
+            f"{'🏢' if not company.get('is_public') else '📈'} "
+            f"{company.get('ticker_symbol', 'N/A')} - {company.get('name', '')} "
+            f"({company.get('industry', 'Unknown')})"
+        ):
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.markdown("**Basic Info**")
+                st.markdown("**Company Info**")
                 st.write(f"📍 Location: {company.get('location', 'N/A')}")
-                st.write(f"💰 Revenue: ${company.get('revenue', 0):,.0f}")
                 st.write(f"👥 Employees: {company.get('employee_count', 0):,}")
-                st.write(f"📈 Growth: {company.get('growth_rate', 0):.1%}")
+                st.write(f"📊 Size: {company.get('size', 'N/A')}")
+                st.write(f"🌐 Website: {company.get('website', 'N/A')}")
             
             with col2:
-                st.markdown("**Business Model**")
-                st.write(f"Model: {company.get('business_model', 'N/A')}")
-                st.write(f"Products: {company.get('key_products', 'N/A')[:100]}...")
-                st.write(f"Markets: {company.get('target_markets', 'N/A')}")
+                st.markdown("**Financial Metrics**")
+                st.write(f"💰 Revenue: ${company.get('revenue', 0)/1e9:.2f}B")
+                st.write(f"📈 Market Cap: ${company.get('market_cap', 0)/1e9:.2f}B")
+                st.write(f"💵 Price: ${company.get('current_price', 0):.2f}")
+                price_change = company.get('price_change_1d', 0)
+                st.write(f"📊 1D Change: {price_change:+.2f}%")
             
             with col3:
-                st.markdown("**Scores**")
+                st.markdown("**Valuation**")
+                st.write(f"P/E: {company.get('pe_ratio', 0):.1f}")
+                st.write(f"P/B: {company.get('pb_ratio', 0):.1f}")
+                st.write(f"ROE: {company.get('roe', 0)*100:.1f}%")
+                st.write(f"Beta: {company.get('beta', 1.0):.2f}")
+            
+            with col4:
+                st.markdown("**Health & Scores**")
+                st.write(f"💪 Health: {company.get('financial_health', 'N/A')}")
                 st.write(f"🌱 Sustainability: {company.get('sustainability_score', 0):.1f}/10")
-                st.write(f"⭐ Reputation: {company.get('reputation_score', 0):.1%}")
-                st.write(f"🔧 Digital: {company.get('digital_maturity', 'N/A')}")
+                st.write(f"⭐ Reputation: {company.get('reputation_score', 0)*100:.0f}%")
+                st.write(f"📅 Updated: {company.get('last_updated', 'N/A')[:10]}")
+            
+            # Description
+            if company.get('description'):
+                st.markdown("**Description:**")
+                st.write(company.get('description')[:300] + "...")
             
             # Action buttons
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
+            
             with col1:
-                if st.button("Edit", key=f"edit_{company['id']}"):
+                if st.button("✏️ Edit", key=f"edit_{company['id']}"):
+                    st.session_state.edit_company_id = company['id']
                     st.session_state.current_page = "CompanyManager"
                     st.rerun()
+            
             with col2:
-                if st.button("Analyze", key=f"analyze_{company['id']}"):
+                if st.button("📊 Analyze", key=f"analyze_{company['id']}"):
                     st.session_state.selected_companies = [company['id']]
                     st.session_state.current_page = "PartnershipWizard"
                     st.rerun()
+            
+            with col3:
+                if company.get('ticker_symbol') and st.button("🔄 Refresh Data", key=f"refresh_{company['id']}"):
+                    discovery = CompanyDiscoveryService()
+                    updated = discovery.fetch_company_by_ticker(company['ticker_symbol'], save_to_db=True)
+                    if updated:
+                        st.success("✅ Data refreshed!")
+                        st.rerun()
+            
+            with col4:
+                if st.button("🗑️ Delete", key=f"delete_{company['id']}"):
+                    if st.checkbox(f"Confirm delete {company.get('name')}", key=f"confirm_{company['id']}"):
+                        conn = st.session_state.db.get_connection()
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM companies WHERE id=?", (company['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.success("Deleted!")
+                        st.rerun()
 
 def show_partnership_wizard():
     """Streamlined partnership wizard with existing companies"""
@@ -4160,5 +6242,718 @@ def show_blockchain():
                 else:
                     st.error("❌ Block integrity compromised!")
 
+def show_portfolio_manager():
+    """Enhanced Portfolio management with advanced financial analytics"""
+    st.title("📊 Portfolio Manager & Financial Analytics")
+    
+    # Initialize systems
+    pm = PortfolioManager(st.session_state.db)
+    analytics = PortfolioAnalytics()
+    
+    # Initialize AI analytics if available
+    try:
+        fin_ai = FinancialAnalyticsAI()
+        ai_available = fin_ai.available
+    except:
+        ai_available = False
+    
+    # Get all portfolios
+    conn = st.session_state.db.get_connection()
+    portfolios_df = pd.read_sql_query("SELECT * FROM portfolios ORDER BY created_at DESC", conn)
+    conn.close()
+    
+    # Main tabs
+    tabs = st.tabs([
+        "📁 Portfolios", 
+        "➕ Create New", 
+        "📊 Analytics", 
+        "⚖️ Rebalancing",
+        "🧠 AI Insights",
+        "📈 Market Sentiment",
+        "🔍 Opportunities"
+    ])
+    
+    # TAB 1: Portfolios
+    with tabs[0]:
+        st.subheader("Your Portfolios")
+        
+        if len(portfolios_df) == 0:
+            st.info("💼 No portfolios yet. Create your first portfolio to get started!")
+            st.markdown("""
+            **Why create a portfolio?**
+            - Track your investments in one place
+            - Get AI-powered insights and recommendations
+            - Monitor performance and risk metrics
+            - Receive rebalancing suggestions
+            """)
+        else:
+            for _, portfolio in portfolios_df.iterrows():
+                with st.expander(f"💼 {portfolio['name']} - ${portfolio['total_value']:,.2f}", expanded=False):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.write(f"**Owner:** {portfolio['owner']}")
+                        st.write(f"**Risk Tolerance:** {portfolio['risk_tolerance']}")
+                        st.write(f"**Investment Horizon:** {portfolio['investment_horizon']}")
+                    
+                    with col2:
+                        st.write(f"**Total Value:** ${portfolio['total_value']:,.2f}")
+                        st.write(f"**Cash Balance:** ${portfolio['cash_balance']:,.2f}")
+                        st.write(f"**Rebalancing:** {portfolio['rebalancing_frequency']}")
+                    
+                    with col3:
+                        st.write(f"**Created:** {portfolio['created_date'][:10]}")
+                        st.write(f"**Last Updated:** {portfolio.get('updated_at', 'N/A')[:10]}")
+                    
+                    # Action buttons
+                    col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+                    
+                    with col_a1:
+                        if st.button("➕ Add Holding", key=f"add_{portfolio['id']}"):
+                            st.session_state.add_holding_portfolio_id = portfolio['id']
+                            st.rerun()
+                    
+                    with col_a2:
+                        if st.button("🔄 Update Prices", key=f"update_{portfolio['id']}"):
+                            with st.spinner("Updating prices..."):
+                                try:
+                                    pm.update_prices(portfolio['id'])
+                                    st.success("✅ Prices updated!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Failed to update: {e}")
+                    
+                    with col_a3:
+                        if st.button("📊 View Analytics", key=f"analytics_{portfolio['id']}"):
+                            st.session_state.selected_portfolio_id = portfolio['id']
+                            st.session_state.selected_tab = 2  # Analytics tab
+                            st.rerun()
+                    
+                    with col_a4:
+                        if st.button("🗑️ Delete", key=f"del_{portfolio['id']}"):
+                            if st.checkbox(f"Confirm delete", key=f"confirm_{portfolio['id']}"):
+                                try:
+                                    conn = st.session_state.db.get_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute("DELETE FROM portfolios WHERE id=?", (portfolio['id'],))
+                                    cursor.execute("DELETE FROM portfolio_holdings WHERE portfolio_id=?", (portfolio['id'],))
+                                    conn.commit()
+                                    conn.close()
+                                    st.success("Deleted!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Failed: {e}")
+                    
+                    # Show holdings
+                    holdings = pm.get_portfolio_holdings(portfolio['id'])
+                    
+                    if holdings:
+                        st.markdown("#### 📋 Holdings")
+                        
+                        holdings_data = []
+                        for h in holdings:
+                            holdings_data.append({
+                                'Ticker': h.ticker_symbol,
+                                'Shares': f"{h.shares:.2f}",
+                                'Avg Cost': f"${h.average_cost:.2f}",
+                                'Current': f"${h.current_price:.2f}",
+                                'Market Value': f"${h.market_value():,.2f}",
+                                'Gain/Loss': f"${h.gain_loss():,.2f}",
+                                'Return %': f"{h.gain_loss_percent():.2f}%",
+                                'Target %': f"{h.target_weight:.1f}%"
+                            })
+                        
+                        st.dataframe(pd.DataFrame(holdings_data), use_container_width=True)
+                        
+                        # Performance metrics
+                        perf = pm.calculate_performance(portfolio['id'])
+                        
+                        st.markdown("#### 📈 Performance Metrics")
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric(
+                                "Total Return",
+                                f"${perf['total_gain_loss']:,.2f}",
+                                delta=f"{perf['total_return_pct']:.2f}%"
+                            )
+                        
+                        with col2:
+                            st.metric(
+                                "Volatility",
+                                f"{perf['volatility']*100:.2f}%",
+                                help="Annualized portfolio volatility"
+                            )
+                        
+                        with col3:
+                            st.metric(
+                                "Sharpe Ratio",
+                                f"{perf['sharpe_ratio']:.2f}",
+                                help="Risk-adjusted return metric"
+                            )
+                        
+                        with col4:
+                            div_score = analytics.calculate_diversification_score(holdings)
+                            st.metric(
+                                "Diversification",
+                                f"{div_score:.0f}/100",
+                                help="Portfolio diversification score"
+                            )
+                        
+                        # Sector allocation chart
+                        companies = st.session_state.db.get_all_companies()
+                        sector_allocation = analytics.calculate_sector_allocation(holdings, companies)
+                        
+                        if sector_allocation:
+                            fig_sector = px.pie(
+                                values=list(sector_allocation.values()),
+                                names=list(sector_allocation.keys()),
+                                title="Sector Allocation",
+                                hole=0.4
+                            )
+                            st.plotly_chart(fig_sector, use_container_width=True)
+                    else:
+                        st.info("📭 No holdings in this portfolio. Click 'Add Holding' to start.")
+    
+    # TAB 2: Create New Portfolio
+    with tabs[1]:
+        st.subheader("Create New Portfolio")
+        
+        with st.form("create_portfolio"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                name = st.text_input("Portfolio Name *", placeholder="My Growth Portfolio")
+                owner = st.text_input("Owner", placeholder="Your Name")
+                risk_tolerance = st.selectbox(
+                    "Risk Tolerance",
+                    ["Conservative", "Moderate", "Aggressive"],
+                    help="Your comfort level with portfolio volatility"
+                )
+            
+            with col2:
+                description = st.text_area("Description", height=100, placeholder="Investment strategy and goals...")
+                investment_horizon = st.selectbox(
+                    "Investment Horizon",
+                    ["Short-term (< 1 year)", "Medium-term (1-5 years)", "Long-term (5+ years)"]
+                )
+                rebalancing_frequency = st.selectbox(
+                    "Rebalancing Frequency",
+                    ["Monthly", "Quarterly", "Semi-annually", "Annually"]
+                )
+            
+            cash_balance = st.number_input(
+                "Initial Cash Balance ($)",
+                min_value=0.0,
+                value=10000.0,
+                help="Starting cash for investments"
+            )
+            
+            submitted = st.form_submit_button("Create Portfolio", type="primary", use_container_width=True)
+            
+            if submitted and name:
+                portfolio = Portfolio(
+                    name=name,
+                    description=description,
+                    owner=owner,
+                    created_date=datetime.now().isoformat(),
+                    cash_balance=cash_balance,
+                    total_value=cash_balance,
+                    risk_tolerance=risk_tolerance,
+                    investment_horizon=investment_horizon.split(" ")[0],
+                    rebalancing_frequency=rebalancing_frequency
+                )
+                
+                try:
+                    portfolio_id = pm.create_portfolio(portfolio)
+                    st.success(f"✅ Portfolio '{name}' created successfully! ID: {portfolio_id}")
+                    st.balloons()
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Failed to create portfolio: {e}")
+    
+    # TAB 3: Analytics
+    with tabs[2]:
+        st.subheader("📊 Portfolio Analytics & Performance")
+        
+        if len(portfolios_df) > 0:
+            selected_portfolio = st.selectbox(
+                "Select Portfolio for Analysis",
+                options=portfolios_df['name'].tolist(),
+                key="analytics_portfolio_select"
+            )
+            
+            portfolio_id = portfolios_df[portfolios_df['name'] == selected_portfolio]['id'].values[0]
+            holdings = pm.get_portfolio_holdings(portfolio_id)
+            
+            if holdings:
+                companies = st.session_state.db.get_all_companies()
+                
+                # Performance Overview
+                perf = pm.calculate_performance(portfolio_id)
+                
+                st.markdown("### 📈 Performance Overview")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Total Value", f"${perf['total_value']:,.2f}")
+                    st.metric("Total Cost", f"${perf['total_cost']:,.2f}")
+                
+                with col2:
+                    st.metric(
+                        "Total Gain/Loss",
+                        f"${perf['total_gain_loss']:,.2f}",
+                        delta=f"{perf['total_return_pct']:.2f}%"
+                    )
+                
+                with col3:
+                    st.metric("Volatility", f"{perf['volatility']*100:.2f}%")
+                    st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
+                
+                with col4:
+                    div_score = analytics.calculate_diversification_score(holdings)
+                    st.metric("Diversification", f"{div_score:.0f}/100")
+                    st.metric("Holdings", len(holdings))
+                
+                # Charts
+                col_c1, col_c2 = st.columns(2)
+                
+                with col_c1:
+                    # Sector allocation
+                    sector_allocation = analytics.calculate_sector_allocation(holdings, companies)
+                    
+                    if sector_allocation:
+                        fig_sector = px.pie(
+                            values=list(sector_allocation.values()),
+                            names=list(sector_allocation.keys()),
+                            title="Sector Allocation",
+                            hole=0.4
+                        )
+                        st.plotly_chart(fig_sector, use_container_width=True)
+                
+                with col_c2:
+                    # Top contributors
+                    top_contributors = analytics.identify_top_contributors(holdings, limit=5)
+                    
+                    if top_contributors:
+                        contrib_df = pd.DataFrame(top_contributors)
+                        fig_contrib = px.bar(
+                            contrib_df,
+                            x='ticker',
+                            y='return_pct',
+                            title="Top Contributors by Return %",
+                            color='return_pct',
+                            color_continuous_scale='RdYlGn'
+                        )
+                        st.plotly_chart(fig_contrib, use_container_width=True)
+                
+                # Position breakdown
+                st.markdown("### 📋 Position Analysis")
+                
+                position_data = []
+                for h in holdings:
+                    company = next((c for c in companies if c.get('ticker_symbol') == h.ticker_symbol), {})
+                    position_data.append({
+                        'Ticker': h.ticker_symbol,
+                        'Company': company.get('name', 'N/A')[:30],
+                        'Sector': company.get('sector', 'Unknown'),
+                        'Shares': h.shares,
+                        'Avg Cost': h.average_cost,
+                        'Current Price': h.current_price,
+                        'Market Value': h.market_value(),
+                        'Gain/Loss': h.gain_loss(),
+                        'Return %': h.gain_loss_percent(),
+                        'Weight %': (h.market_value() / perf['total_value'] * 100) if perf['total_value'] > 0 else 0
+                    })
+                
+                position_df = pd.DataFrame(position_data)
+                
+                # Format for display
+                display_df = position_df.copy()
+                display_df['Avg Cost'] = display_df['Avg Cost'].apply(lambda x: f"${x:.2f}")
+                display_df['Current Price'] = display_df['Current Price'].apply(lambda x: f"${x:.2f}")
+                display_df['Market Value'] = display_df['Market Value'].apply(lambda x: f"${x:,.2f}")
+                display_df['Gain/Loss'] = display_df['Gain/Loss'].apply(lambda x: f"${x:,.2f}")
+                display_df['Return %'] = display_df['Return %'].apply(lambda x: f"{x:.2f}%")
+                display_df['Weight %'] = display_df['Weight %'].apply(lambda x: f"{x:.1f}%")
+                
+                st.dataframe(display_df, use_container_width=True, height=400)
+                
+            else:
+                st.info("📭 No holdings to analyze. Add holdings to see analytics.")
+        else:
+            st.info("📭 Create a portfolio first to see analytics.")
+    
+    # TAB 4: Rebalancing
+    with tabs[3]:
+        st.subheader("⚖️ Portfolio Rebalancing")
+        
+        if len(portfolios_df) > 0:
+            selected_portfolio = st.selectbox(
+                "Select Portfolio for Rebalancing",
+                options=portfolios_df['name'].tolist(),
+                key="rebal_portfolio_select"
+            )
+            
+            portfolio_id = portfolios_df[portfolios_df['name'] == selected_portfolio]['id'].values[0]
+            
+            if st.button("🔄 Generate Rebalancing Plan", type="primary"):
+                with st.spinner("Analyzing portfolio and generating recommendations..."):
+                    rebal_plan = pm.generate_rebalancing_plan(portfolio_id)
+                
+                if rebal_plan['needs_rebalancing']:
+                    st.warning(f"⚠️ Portfolio needs rebalancing! Total value: ${rebal_plan['total_value']:,.2f}")
+                    
+                    st.markdown("### 📋 Recommended Actions")
+                    
+                    for i, action in enumerate(rebal_plan['actions'], 1):
+                        color = "🔴" if action['action'] == 'SELL' else "🟢"
+                        
+                        with st.container():
+                            st.markdown(f"""
+                            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 10px; margin: 0.5rem 0;">
+                                <h4>{color} Action {i}: {action['action']} {action['ticker']}</h4>
+                                <p><strong>Current Weight:</strong> {action['current_weight']:.2f}%</p>
+                                <p><strong>Target Weight:</strong> {action['target_weight']:.2f}%</p>
+                                <p><strong>Drift:</strong> {action['drift']:+.2f}% {"(Overweight)" if action['drift'] > 0 else "(Underweight)"}</p>
+                                <p><strong>Amount to {action['action']}:</strong> ${action['amount']:,.2f} ({action['shares']:.2f} shares)</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # Summary
+                    st.markdown("---")
+                    st.markdown("### 📊 Rebalancing Summary")
+                    
+                    total_to_sell = sum(a['amount'] for a in rebal_plan['actions'] if a['action'] == 'SELL')
+                    total_to_buy = sum(a['amount'] for a in rebal_plan['actions'] if a['action'] == 'BUY')
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Total to Sell", f"${total_to_sell:,.2f}")
+                    with col2:
+                        st.metric("Total to Buy", f"${total_to_buy:,.2f}")
+                    with col3:
+                        st.metric("Net Cash Flow", f"${(total_to_sell - total_to_buy):,.2f}")
+                    
+                else:
+                    st.success("✅ Portfolio is well-balanced! No rebalancing needed.")
+                    st.info("All positions are within 5% of their target weights.")
+        else:
+            st.info("📭 Create a portfolio with holdings to see rebalancing recommendations.")
+    
+    # TAB 5: AI Insights
+    with tabs[4]:
+        st.subheader("🧠 AI-Powered Portfolio Insights")
+        
+        if not ai_available:
+            st.warning("⚠️ AI Insights not available")
+            st.info("""
+            **To enable AI insights:**
+            1. Add your Gemini API key to `.env` file:
+            2. Or add `GEMINI_API_KEY=your_api_key_here`
+            3. Restart the application
+            
+            Get your free API key from: https://ai.google.dev/
+            """)
+        else:
+            if len(portfolios_df) > 0:
+                selected_portfolio = st.selectbox(
+                    "Select Portfolio for AI Analysis",
+                    options=portfolios_df['name'].tolist(),
+                    key="ai_portfolio_select"
+                )
+                
+                portfolio_id = portfolios_df[portfolios_df['name'] == selected_portfolio]['id'].values[0]
+                holdings = pm.get_portfolio_holdings(portfolio_id)
+                
+                if holdings:
+                    # Analysis type selection
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        analysis_type = st.selectbox(
+                            "Analysis Type",
+                            ["comprehensive", "risk", "market_intelligence"],
+                            format_func=lambda x: {
+                                'comprehensive': '📊 Comprehensive Analysis',
+                                'risk': '⚠️ Risk Assessment',
+                                'market_intelligence': '📈 Market Intelligence'
+                            }[x]
+                        )
+                    
+                    with col2:
+                        time_horizon = st.selectbox(
+                            "Time Horizon",
+                            ["1 Week", "1 Month", "3 Months", "1 Year"]
+                        )
+                    
+                    if st.button("🚀 Generate AI Analysis", type="primary", use_container_width=True):
+                        with st.spinner("🧠 AI analyzing your portfolio... This may take 30-60 seconds..."):
+                            companies = st.session_state.db.get_all_companies()
+                            result = fin_ai.analyze_portfolio(portfolio_id, holdings, companies, analysis_type)
+                            
+                            if result.get('success'):
+                                st.success("✅ AI Analysis Complete!")
+                                
+                                # Display metrics
+                                metrics = result['metrics']
+                                col1, col2, col3, col4 = st.columns(4)
+                                
+                                with col1:
+                                    st.metric("Total Value", f"${metrics['total_value']:,.2f}")
+                                with col2:
+                                    st.metric("Total Gain/Loss", f"${metrics['total_gain_loss']:,.2f}")
+                                with col3:
+                                    st.metric("Return %", f"{metrics['return_pct']:.2f}%")
+                                with col4:
+                                    st.metric("Holdings", metrics['holdings_count'])
+                                
+                                # Display AI analysis
+                                st.markdown("---")
+                                st.markdown("### 💡 AI Insights")
+                                
+                                st.markdown(f"""
+                                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                            padding: 2rem; border-radius: 15px; color: white;">
+                                    {result['analysis'].replace('*', '').replace('#', '')}
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                            else:
+                                st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
+                else:
+                    st.info("📭 No holdings to analyze. Add holdings first.")
+            else:
+                st.info("📭 Create a portfolio with holdings to get AI insights.")
+    
+    # TAB 6: Market Sentiment
+    with tabs[5]:
+        st.subheader("📊 Market Sentiment Analysis")
+        
+        if len(portfolios_df) > 0:
+            selected_portfolio = st.selectbox(
+                "Select Portfolio",
+                options=portfolios_df['name'].tolist(),
+                key="sentiment_portfolio_select"
+            )
+            
+            portfolio_id = portfolios_df[portfolios_df['name'] == selected_portfolio]['id'].values[0]
+            holdings = pm.get_portfolio_holdings(portfolio_id)
+            
+            if holdings:
+                if st.button("🔄 Calculate Market Sentiment", type="primary"):
+                    with st.spinner("Analyzing market sentiment across your holdings..."):
+                        sentiment_analyzer = MarketSentimentAnalyzer()
+                        tickers = [h.ticker_symbol for h in holdings]
+                        sentiment_data = sentiment_analyzer.calculate_market_sentiment(tickers)
+                    
+                    st.success("✅ Sentiment analysis complete!")
+                    
+                    # Display sentiment indicators
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    cols = [col1, col2, col3, col4]
+                    for i, (indicator, data) in enumerate(sentiment_data.items()):
+                        with cols[i]:
+                            st.markdown(f"""
+                            <div style="background: rgba(255,255,255,0.05); padding: 1rem; 
+                                        border-radius: 10px; text-align: center;">
+                                <h4>{indicator}</h4>
+                                <h2>{data['score']:.0f}/100</h2>
+                                <p>{data['status']}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # Sentiment chart
+                    sentiment_df = pd.DataFrame([
+                        {'Indicator': k, 'Score': v['score']} 
+                        for k, v in sentiment_data.items()
+                    ])
+                    
+                    fig = px.bar(
+                        sentiment_df,
+                        x='Indicator',
+                        y='Score',
+                        title="Market Sentiment Indicators",
+                        color='Score',
+                        color_continuous_scale='RdYlGn',
+                        range_color=[0, 100]
+                    )
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Interpretation
+                    st.markdown("### 📖 Sentiment Interpretation")
+                    
+                    avg_sentiment = sum(v['score'] for v in sentiment_data.values()) / len(sentiment_data)
+                    
+                    if avg_sentiment >= 70:
+                        interpretation = "🟢 **Strong Market Conditions** - Favorable environment for growth positions"
+                    elif avg_sentiment >= 50:
+                        interpretation = "🟡 **Neutral Market** - Balanced risk/reward environment"
+                    else:
+                        interpretation = "🔴 **Weak Market Conditions** - Consider defensive positioning"
+                    
+                    st.info(interpretation)
+            else:
+                st.info("📭 Add holdings to analyze market sentiment.")
+        else:
+            st.info("📭 Create a portfolio first.")
+    
+    # TAB 7: Opportunities
+    with tabs[6]:
+        st.subheader("🔍 Investment Opportunities")
+        
+        if len(portfolios_df) > 0:
+            selected_portfolio = st.selectbox(
+                "Select Portfolio",
+                options=portfolios_df['name'].tolist(),
+                key="opp_portfolio_select"
+            )
+            
+            portfolio_id = portfolios_df[portfolios_df['name'] == selected_portfolio]['id'].values[0]
+            holdings = pm.get_portfolio_holdings(portfolio_id)
+            
+            if holdings:
+                if st.button("🔍 Scan for Opportunities", type="primary"):
+                    with st.spinner("Scanning market for opportunities..."):
+                        scanner = OpportunityScanner()
+                        all_companies = st.session_state.db.get_all_companies()
+                        opportunities = scanner.scan_opportunities(holdings, all_companies)
+                    
+                    st.success("✅ Opportunity scan complete!")
+                    
+                    # Momentum Plays
+                    if opportunities['momentum_plays']:
+                        st.markdown("### 🚀 Momentum Plays")
+                        for opp in opportunities['momentum_plays']:
+                            st.markdown(f"""
+                            <div style="background: rgba(0,255,0,0.1); padding: 1rem; 
+                                        border-radius: 10px; margin: 0.5rem 0;">
+                                <strong>{opp['ticker']}</strong>: {opp['return']:.2f}% return<br>
+                                <em>{opp['action']}</em>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # Value Opportunities
+                    if opportunities['value_opportunities']:
+                        st.markdown("### 💎 Value Opportunities")
+                        value_df = pd.DataFrame(opportunities['value_opportunities'])
+                        st.dataframe(value_df, use_container_width=True)
+                    
+                    # Diversification Needs
+                    if opportunities['diversification_needs']:
+                        st.markdown("### 🎯 Diversification Recommendations")
+                        for need in opportunities['diversification_needs']:
+                            st.warning(f"**{need['issue']}**: {need['recommendation']}")
+                    
+                    if not any(opportunities.values()):
+                        st.info("No specific opportunities identified at this time. Portfolio appears well-positioned.")
+            else:
+                st.info("📭 Add holdings to scan for opportunities.")
+        else:
+            st.info("📭 Create a portfolio first.")
+    
+    # Add Holding Dialog
+    if 'add_holding_portfolio_id' in st.session_state and st.session_state.add_holding_portfolio_id:
+        st.markdown("---")
+        st.subheader("➕ Add New Holding")
+        
+        portfolio_id = st.session_state.add_holding_portfolio_id
+        
+        with st.form("add_holding"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Select from existing companies
+                companies = st.session_state.db.get_all_companies()
+                company_options = {
+                    f"{c.get('ticker_symbol', 'N/A')} - {c.get('name', 'Unknown')}": c.get('id')
+                    for c in companies 
+                    if c.get('ticker_symbol') and c.get('is_public', False)
+                }
+                
+                if not company_options:
+                    st.warning("⚠️ No public companies with ticker symbols found.")
+                    st.info("Import companies with tickers using 'Discover Companies' feature first.")
+                    st.form_submit_button("Cancel", on_click=lambda: st.session_state.pop('add_holding_portfolio_id'))
+                else:
+                    selected_company = st.selectbox("Select Company", options=list(company_options.keys()))
+                    company_id = company_options[selected_company]
+                    ticker = selected_company.split(" - ")[0]
+                    
+                    shares = st.number_input("Number of Shares", min_value=0.01, value=10.0, step=0.01)
+                    average_cost = st.number_input("Average Cost per Share ($)", min_value=0.01, value=100.0)
+            
+            with col2:
+                purchase_date = st.date_input("Purchase Date", value=datetime.now())
+                target_weight = st.slider("Target Weight (%)", 0.0, 100.0, 10.0, 0.5)
+                
+                # Fetch current price
+                if ticker:
+                    market_data = MarketDataFetcher()
+                    data = market_data.get_stock_data(ticker, period='1d')
+                    if data and 'hist' in data and len(data['hist']) > 0:
+                        current_price = float(data['hist']['Close'].iloc[-1])
+                        st.success(f"📊 Current Price: ${current_price:.2f}")
+                    else:
+                        current_price = average_cost
+                        st.info(f"Using average cost as current price: ${current_price:.2f}")
+                else:
+                    current_price = average_cost
+            
+            col_submit1, col_submit2 = st.columns(2)
+            
+            with col_submit1:
+                submitted = st.form_submit_button("Add Holding", type="primary", use_container_width=True)
+            
+            with col_submit2:
+                cancelled = st.form_submit_button("Cancel", use_container_width=True)
+            
+            if cancelled:
+                del st.session_state.add_holding_portfolio_id
+                st.rerun()
+            
+            if submitted and company_id:
+                holding = PortfolioHolding(
+                    portfolio_id=portfolio_id,
+                    company_id=company_id,
+                    ticker_symbol=ticker,
+                    shares=shares,
+                    average_cost=average_cost,
+                    current_price=current_price,
+                    purchase_date=purchase_date.isoformat(),
+                    target_weight=target_weight
+                )
+                
+                try:
+                    holding_id = pm.add_holding(holding)
+                    st.success(f"✅ Added {shares} shares of {ticker}!")
+                    del st.session_state.add_holding_portfolio_id
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to add holding: {e}")        
+
+                   
+
+def show_rag_status_banner():
+    """Show RAG system status banner"""
+    if not RAG_AVAILABLE:
+        st.warning("""
+        ⚠️ **RAG System Not Available**
+        
+        The Advanced RAG system requires additional dependencies. To enable:
+```bash
+        pip install -r requirements_rag.txt
+        docker run -p 6333:6333 qdrant/qdrant
+```
+        
+        Then restart the application.
+        """)
 if __name__ == "__main__":
     main()
