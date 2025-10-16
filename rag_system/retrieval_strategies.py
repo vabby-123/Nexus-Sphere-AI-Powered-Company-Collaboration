@@ -21,7 +21,7 @@ class MultiQueryRetriever:
     def __init__(self, vector_store):
         self.vector_store = vector_store
         self.llm = GoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.5-flash",
             google_api_key=os.getenv('GEMINI_API_KEY'),
             temperature=0.7
         )
