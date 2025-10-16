@@ -4,38 +4,3 @@ data/
 rag_system/__pycache__
 rag_system/.env
 
-chroma_db/
-*.sqlite3
-
-# Cache directories
-data/sec_filings/
-data/url_cache/
-data/pdf_cache/
-data/temp_uploads/
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-*.egg-info/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Environment variables
-.env
-.env.local
