@@ -860,7 +860,7 @@ logger = logging.getLogger(__name__)
 # HARDCODED API KEYS - WARNING: DO NOT COMMIT TO VERSION CONTROL!
 # ============================================================================
 HARDCODED_SEC_API_KEY = "your_sec_api_key_here"  # Replace with your actual key
-HARDCODED_GEMINI_API_KEY = "AIzaSyByvZfBsfw0ZDhTeKXh5hL4GfBogIfac9c"
+HARDCODED_GEMINI_API_KEY = ""
 HARDCODED_SEC_USER_EMAIL = "your_email@example.com"  # Replace with your email
 # ============================================================================
 
